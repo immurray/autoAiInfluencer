@@ -10,7 +10,7 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from dotenv import load_dotenv
 
 from .caption import CaptionGenerator
-from .config import AppConfig, load_config
+from .config import AppConfig, load_config, mask_sensitive_value
 from .image_source import ImageSource
 from .logging_config import setup_logging
 from .poster import TweetPoster
@@ -45,6 +45,13 @@ def create_components(config_path: Path) -> tuple[AppConfig, BotRunner]:
     _load_environment(config_path)
     config = load_config(config_path)
     setup_logging(config.log_path)
+
+    logger = logging.getLogger(__name__)
+    masked_key = mask_sensitive_value(config.openai_api_key)
+    if config.openai_api_key:
+        logger.info("OPENAI_API_KEY 已成功加载，掩码后为：%s", masked_key)
+    else:
+        logger.warning("未检测到 OPENAI_API_KEY，将回退至模板文案。")
 
     image_source = ImageSource(config.image_directory)
     caption_generator = CaptionGenerator(config.caption, config.openai_api_key)

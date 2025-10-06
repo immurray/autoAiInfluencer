@@ -10,7 +10,7 @@ import random
 
 from openai import OpenAI
 
-from .config import CaptionConfig
+from .config import CaptionConfig, mask_sensitive_value
 
 
 @dataclass
@@ -32,6 +32,12 @@ class CaptionGenerator:
         if api_key:
             self._client = OpenAI(api_key=api_key)
         self._logger = logging.getLogger(__name__)
+
+        masked_key = mask_sensitive_value(api_key)
+        if api_key:
+            self._logger.info("OpenAI API Key 已注入，掩码后为：%s", masked_key)
+        else:
+            self._logger.warning("OpenAI API Key 未配置，文案将使用本地模板。")
 
     def _build_prompt(self, image_path: Path) -> str:
         """根据图片文件生成提示语。"""

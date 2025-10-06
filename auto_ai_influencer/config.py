@@ -9,6 +9,18 @@ import json
 import os
 
 
+def mask_sensitive_value(value: Optional[str]) -> str:
+    """对敏感字符串做掩码处理，方便打印调试。"""
+
+    if not value:
+        return "未配置"
+    if len(value) <= 4:
+        return f"{value[0]}***"
+    if len(value) <= 8:
+        return f"{value[:2]}***{value[-2:]}"
+    return f"{value[:4]}***{value[-4:]}"
+
+
 @dataclass
 class CaptionConfig:
     """文案生成相关配置。"""
@@ -141,6 +153,9 @@ def load_config(path: Path) -> AppConfig:
     )
 
     openai_api_key = os.getenv("OPENAI_API_KEY")
+    # 打印关键提示，帮助确认环境变量是否生效
+    masked_key = mask_sensitive_value(openai_api_key)
+    print(f"[配置] OPENAI_API_KEY 读取结果：{masked_key}")
 
     return AppConfig(
         image_directory=image_directory,
@@ -163,4 +178,5 @@ __all__ = [
     "SchedulerConfig",
     "TwitterCredentials",
     "load_config",
+    "mask_sensitive_value",
 ]

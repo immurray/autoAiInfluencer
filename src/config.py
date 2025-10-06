@@ -8,6 +8,8 @@ from typing import Any, Dict, List, Optional
 import json
 import os
 
+from dotenv import load_dotenv
+
 from auto_ai_influencer.config import AppConfig, load_config
 
 
@@ -51,6 +53,12 @@ def _load_raw_config(path: Path) -> Dict[str, Any]:
 
 def load_settings(config_path: Path) -> tuple[AppConfig, AIPipelineConfig, Dict[str, Any]]:
     """加载基础配置与 AI 流水线配置。"""
+
+    # 加载通用 .env 与配置文件同目录下的 .env
+    load_dotenv()
+    env_path = (config_path.parent / ".env").resolve()
+    if env_path.exists():
+        load_dotenv(dotenv_path=env_path, override=False)
 
     app_config = load_config(config_path)
     raw_data = _load_raw_config(config_path)

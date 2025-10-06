@@ -72,17 +72,56 @@
 
 ## 运行方式
 
-项目通过 `auto_ai_influencer.main` 提供命令行入口，可传入自定义配置文件：
+### FastAPI 服务（推荐）
+
+新版系统提供 FastAPI 服务，支持可视化接口、异步任务调度与 AI 流水线整合：
 
 ```bash
-python -m auto_ai_influencer.main --once           # 仅执行一轮任务
-python -m auto_ai_influencer.main                  # 长期运行，按调度循环
-python -m auto_ai_influencer.main --config other.json  # 指定自定义配置
+uvicorn src.main:app --reload
 ```
 
-- dry-run 模式下，流程会在日志中输出模拟发布结果，不会调用 X API。
-- 真实发文前请确认 `.env` 中的 X 凭证已填写且 `dry_run` 为 `false`。
-- 运行中断后再次启动，系统会读取数据库，避免重复发布同一素材。
+- 启动后访问 `http://127.0.0.1:8000/docs` 可查看 API 文档。
+- `/health` 用于健康检查，`/pipeline/run` 可手动触发一次 AI 流水线。
+- `/posts/history` 与 `/captions/logs` 返回最新的数据库记录。
+- `/images/upload` 支持上传新素材到 `data/ready_to_post/`。
+
+若仍需使用原有命令行入口，可继续执行：
+
+```bash
+python -m auto_ai_influencer.main --once
+python -m auto_ai_influencer.main
+```
+
+### 启用 AI 虚拟人流水线
+
+`config.json` 中新增 `ai_pipeline` 节点，用于配置每日定时自动发帖：
+
+```json
+"ai_pipeline": {
+  "enable": true,
+  "post_slots": ["11:00", "19:00"],
+  "image_source": "replicate",
+  "replicate_model": "stability-ai/sdxl",
+  "replicate_token": "xxx",
+  "prompt_template": "portrait of a young woman, soft light, film tone",
+  "caption_style": "soft_romance",
+  "openai_api_key": "xxx"
+}
+```
+
+- `enable` 为 `true` 时，调度器将在 `post_slots` 指定的时间自动执行以下流程：
+  1. 检查 `data/ready_to_post/` 目录，优先选取未发布的素材。
+  2. 若目录为空且配置了云端服务（如 Replicate 或 Leonardo.ai），则在线生成图片并保存。
+  3. 调用 OpenAI（可选）或本地模板生成 X 平台文案。
+  4. 通过 Tweepy/X API 发布，dry-run 模式下仅记录日志。
+  5. 将图片名称、文案、执行时间与结果写入 `post_history`，文案写入 `caption_log`。
+- 缺少任何 API Key 时，系统会自动回退到本地模板与默认测试图片，仍可 dry-run 验证流程。
+- `openai_api_key`、`replicate_token` 等敏感信息也可放置在 `.env` 中，程序会优先读取。
+
+### Dry-Run 说明
+
+- `config.json` 顶层的 `dry_run` 仍然有效，会同时影响 FastAPI 流水线与命令行模式。
+- dry-run 为 `true` 或缺少推特凭证时，发布环节不会真实调用 X API，仅在日志与数据库中记录模拟结果。
 
 ## 结构说明
 

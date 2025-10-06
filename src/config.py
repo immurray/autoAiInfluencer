@@ -1,0 +1,103 @@
+"""配置加载工具，负责兼容基础配置与 AI 流水线配置。"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+import json
+import os
+
+from auto_ai_influencer.config import AppConfig, load_config
+
+
+@dataclass
+class AIPipelineConfig:
+    """AI 流水线相关配置。"""
+
+    enable: bool = False
+    post_slots: List[str] = field(default_factory=list)
+    image_source: str = "local"
+    prompt_template: str = ""
+    caption_style: str = "default"
+    openai_api_key: Optional[str] = None
+    replicate_model: Optional[str] = None
+    replicate_token: Optional[str] = None
+    leonardo_model: Optional[str] = None
+    leonardo_token: Optional[str] = None
+    ready_directory: Path = Path("data/ready_to_post")
+    caption_log_directory: Path = Path("logs")
+    timezone: str = "Asia/Shanghai"
+    default_image: Path = Path("data/ready_to_post/default_test.png")
+
+    @property
+    def is_cloud_enabled(self) -> bool:
+        """判断是否允许调用云端图片生成。"""
+
+        return self.image_source.lower() in {"replicate", "leonardo"}
+
+
+def _resolve_path(base: Path, value: Optional[str], fallback: str) -> Path:
+    """将配置中的路径转换为绝对路径。"""
+
+    raw = Path(value or fallback)
+    return (raw if raw.is_absolute() else (base / raw)).resolve()
+
+
+def _load_raw_config(path: Path) -> Dict[str, Any]:
+    with path.open("r", encoding="utf-8") as fp:
+        return json.load(fp)
+
+
+def load_settings(config_path: Path) -> tuple[AppConfig, AIPipelineConfig, Dict[str, Any]]:
+    """加载基础配置与 AI 流水线配置。"""
+
+    app_config = load_config(config_path)
+    raw_data = _load_raw_config(config_path)
+
+    ai_data: Dict[str, Any] = raw_data.get("ai_pipeline", {})
+    base_dir = config_path.parent
+
+    ready_directory = _resolve_path(base_dir, ai_data.get("ready_directory"), "data/ready_to_post")
+    caption_log_directory = _resolve_path(base_dir, ai_data.get("caption_log_directory"), "logs")
+    default_image = _resolve_path(base_dir, ai_data.get("default_image"), "data/ready_to_post/default_test.png")
+
+    openai_api_key = (
+        ai_data.get("openai_api_key")
+        or os.getenv("AI_PIPELINE_OPENAI_API_KEY")
+        or os.getenv("OPENAI_API_KEY")
+        or app_config.openai_api_key
+    )
+    replicate_token = ai_data.get("replicate_token") or os.getenv("REPLICATE_API_TOKEN")
+    leonardo_token = ai_data.get("leonardo_token") or os.getenv("LEONARDO_API_TOKEN")
+
+    raw_slots = ai_data.get("post_slots", [])
+    if isinstance(raw_slots, str):
+        slots = [item.strip() for item in raw_slots.split(",") if item.strip()]
+    else:
+        slots = list(raw_slots)
+
+    ai_config = AIPipelineConfig(
+        enable=bool(ai_data.get("enable", False)),
+        post_slots=slots,
+        image_source=str(ai_data.get("image_source", "local")).lower(),
+        prompt_template=ai_data.get("prompt_template", ""),
+        caption_style=ai_data.get("caption_style", "default"),
+        openai_api_key=openai_api_key,
+        replicate_model=ai_data.get("replicate_model"),
+        replicate_token=replicate_token,
+        leonardo_model=ai_data.get("leonardo_model"),
+        leonardo_token=leonardo_token,
+        ready_directory=ready_directory,
+        caption_log_directory=caption_log_directory,
+        timezone=ai_data.get("timezone", raw_data.get("scheduler", {}).get("timezone", "Asia/Shanghai")),
+        default_image=default_image,
+    )
+
+    ready_directory.mkdir(parents=True, exist_ok=True)
+    caption_log_directory.mkdir(parents=True, exist_ok=True)
+
+    return app_config, ai_config, raw_data
+
+
+__all__ = ["AIPipelineConfig", "load_settings"]

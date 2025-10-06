@@ -152,7 +152,8 @@ def load_config(path: Path) -> AppConfig:
         bearer_token=os.getenv("TWITTER_BEARER_TOKEN"),
     )
 
-    openai_api_key = os.getenv("OPENAI_API_KEY")
+    raw_openai_key = os.getenv("OPENAI_API_KEY")
+    openai_api_key = raw_openai_key.strip() if raw_openai_key else None
     # 打印关键提示，帮助确认环境变量是否生效
     masked_key = mask_sensitive_value(openai_api_key)
     print(f"[配置] OPENAI_API_KEY 读取结果：{masked_key}")

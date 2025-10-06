@@ -1,0 +1,26 @@
+{
+  "image_directory": "./images",
+  "database_path": "./data/auto_ai.db",
+  "log_path": "./data/bot.log",
+  "dry_run": true,
+  "max_posts_per_cycle": 1,
+  "caption": {
+    "model": "gpt-4o-mini",
+    "prompt": "请为下面的图片撰写一条适合 X 平台的中文推文，保持积极且具有号召力，长度不超过 100 字。",
+    "templates": [
+      "🌟 AI 小编打卡上线！這張 {filename} 是否也触发了你的灵感？",
+      "新的故事从這張 {filename} 开始，跟我分享你的想法吧！",
+      "這張 {filename} 带来满满能量，一起为今天加油！"
+    ]
+  },
+  "tweet": {
+    "prefix": "",
+    "suffix": "#AI #虚拟人",
+    "max_length": 280
+  },
+  "scheduler": {
+    "interval_minutes": 60,
+    "timezone": "Asia/Shanghai",
+    "initial_run": true
+  }
+}

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, Optional
 import json
 import logging
 import random
@@ -106,20 +107,143 @@ class CaptionProvider:
         if self._prompt:
             prompt = f"{self._prompt}\n\n{prompt}"
 
-        response = self._client.chat.completions.create(
-            model=self._model,
-            messages=[
-                {"role": "system", "content": "你是一名资深新媒体编辑。"},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.8,
-            max_tokens=200,
-        )
-        choice = response.choices[0]
-        text = (choice.message.content or "").strip()
+        messages = [
+            {"role": "system", "content": "你是一名资深新媒体编辑。"},
+            {"role": "user", "content": prompt},
+        ]
+
+        if hasattr(self._client, "chat") and hasattr(self._client.chat, "completions"):
+            response = self._client.chat.completions.create(
+                model=self._model,
+                messages=messages,
+                temperature=0.8,
+                max_tokens=200,
+            )
+        elif hasattr(self._client, "responses"):
+            response = self._client.responses.create(
+                model=self._model,
+                input=self._convert_messages_to_responses(messages),
+                temperature=0.8,
+                max_output_tokens=200,
+            )
+        else:  # pragma: no cover - 仅在未来 SDK 出现兼容性问题时触发
+            raise RuntimeError("当前 OpenAI SDK 不支持 chat.completions 或 responses 接口")
+
+        text = self._extract_text_from_openai_response(response)
         if not text:
             raise ValueError("OpenAI 返回内容为空")
         return text
+
+    def _convert_messages_to_responses(self, messages: list[dict]) -> list[dict]:
+        """将 Chat Completions 风格的消息转成 Responses 接口支持的格式。"""
+
+        converted: list[dict] = []
+        for message in messages:
+            role = message.get("role", "user")
+            content = message.get("content", "")
+            if isinstance(content, str):
+                converted.append(
+                    {
+                        "role": role,
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": content,
+                            }
+                        ],
+                    }
+                )
+            else:
+                converted.append(message)
+        return converted
+
+    def _extract_text_from_openai_response(self, response: Any) -> str:
+        """兼容不同 OpenAI SDK 版本的返回结构，提取文本。"""
+
+        # 优先处理 chat.completions 的结构
+        choices = getattr(response, "choices", None)
+        if choices:
+            choice = choices[0]
+            message = getattr(choice, "message", None)
+            if message is not None:
+                content = getattr(message, "content", None)
+                text = self._normalize_openai_content(content)
+                if text:
+                    return text
+
+        data = self._to_dict(response)
+        if not data:
+            return ""
+
+        if "choices" in data:
+            choices_data = data.get("choices", [])
+            if choices_data:
+                message_data = choices_data[0].get("message", {})
+                text = self._normalize_openai_content(message_data.get("content"))
+                if text:
+                    return text
+
+        if "output_text" in data and data["output_text"]:
+            return str(data["output_text"]).strip()
+
+        output_items = data.get("output")
+        if isinstance(output_items, Iterable) and not isinstance(output_items, (str, bytes)):
+            texts: list[str] = []
+            for item in output_items:
+                item_dict = item
+                if not isinstance(item_dict, dict):
+                    item_dict = getattr(item, "model_dump", lambda: {})()
+                contents = item_dict.get("content")
+                if isinstance(contents, Iterable) and not isinstance(contents, (str, bytes)):
+                    for part in contents:
+                        part_dict = part
+                        if not isinstance(part_dict, dict):
+                            part_dict = getattr(part, "model_dump", lambda: {})()
+                        text = part_dict.get("text")
+                        if text:
+                            texts.append(str(text))
+            joined = "".join(texts).strip()
+            if joined:
+                return joined
+
+        return ""
+
+    @staticmethod
+    def _normalize_openai_content(content: Any) -> str:
+        """将不同结构的 content 字段统一为纯文本。"""
+
+        if isinstance(content, str):
+            return content.strip()
+        if isinstance(content, list):
+            texts: list[str] = []
+            for item in content:
+                if isinstance(item, dict):
+                    text = item.get("text") or item.get("content")
+                    if text:
+                        texts.append(str(text))
+                else:
+                    text = getattr(item, "text", None)
+                    if text:
+                        texts.append(str(text))
+            return "".join(texts).strip()
+        return ""
+
+    @staticmethod
+    def _to_dict(response: Any) -> Dict[str, Any]:
+        """尽可能地将 OpenAI 响应对象转换为字典。"""
+
+        if isinstance(response, dict):
+            return response
+        for attr in ("model_dump", "dict", "to_dict"):
+            method = getattr(response, attr, None)
+            if callable(method):
+                try:
+                    data = method()
+                    if isinstance(data, dict):
+                        return data
+                except Exception:  # pragma: no cover - 转换失败时忽略
+                    continue
+        return {}
 
     def _call_openai_http(self, image_path: Path, style: str) -> str:
         """使用 HTTP 调用 OpenAI 接口的兜底逻辑。"""

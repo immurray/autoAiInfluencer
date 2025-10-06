@@ -70,14 +70,26 @@ def load_settings(config_path: Path) -> tuple[AppConfig, AIPipelineConfig, Dict[
     caption_log_directory = _resolve_path(base_dir, ai_data.get("caption_log_directory"), "logs")
     default_image = _resolve_path(base_dir, ai_data.get("default_image"), "data/ready_to_post/default_test.png")
 
-    openai_api_key = (
+    def _normalize_secret(value: Optional[str]) -> Optional[str]:
+        """对密钥字符串做清理，避免因空格导致认证失败。"""
+
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
+
+    openai_api_key = _normalize_secret(
         ai_data.get("openai_api_key")
         or os.getenv("AI_PIPELINE_OPENAI_API_KEY")
         or os.getenv("OPENAI_API_KEY")
         or app_config.openai_api_key
     )
-    replicate_token = ai_data.get("replicate_token") or os.getenv("REPLICATE_API_TOKEN")
-    leonardo_token = ai_data.get("leonardo_token") or os.getenv("LEONARDO_API_TOKEN")
+    replicate_token = _normalize_secret(
+        ai_data.get("replicate_token") or os.getenv("REPLICATE_API_TOKEN")
+    )
+    leonardo_token = _normalize_secret(
+        ai_data.get("leonardo_token") or os.getenv("LEONARDO_API_TOKEN")
+    )
 
     raw_slots = ai_data.get("post_slots", [])
     if isinstance(raw_slots, str):

@@ -77,13 +77,15 @@
 新版系统提供 FastAPI 服务，支持可视化接口、异步任务调度与 AI 流水线整合：
 
 ```bash
-uvicorn src.main:app --reload
+python -m src.main
 ```
 
-- 启动后访问 `http://127.0.0.1:8000/docs` 可查看 API 文档。
+- 如需热重载，可执行 `uvicorn src.main:app --reload --port 5500`。
+- 启动后访问 `http://127.0.0.1:5500/docs` 可查看 API 文档。
 - `/health` 用于健康检查，`/pipeline/run` 可手动触发一次 AI 流水线。
 - `/posts/history` 与 `/captions/logs` 返回最新的数据库记录。
 - `/images/upload` 支持上传新素材到 `data/ready_to_post/`。
+- 默认监听地址为 `0.0.0.0:5500`，可通过 `APP_HOST`、`APP_PORT`、`APP_RELOAD` 环境变量覆盖。
 
 若仍需使用原有命令行入口，可继续执行：
 

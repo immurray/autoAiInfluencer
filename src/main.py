@@ -142,3 +142,28 @@ def create_app(config_path: Path | None = None) -> FastAPI:
 
 
 app = create_app()
+
+
+def _get_bool_env(key: str, default: bool) -> bool:
+    """解析布尔环境变量，默认值与返回值均为布尔型。"""
+
+    value = os.getenv(key)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def run() -> None:
+    """以 5500 端口启动 FastAPI 服务，可通过环境变量覆盖。"""
+
+    host = os.getenv("APP_HOST", "0.0.0.0")
+    port = int(os.getenv("APP_PORT", "5500"))
+    reload = _get_bool_env("APP_RELOAD", True)
+
+    import uvicorn  # 延迟导入，避免在未运行服务时增加依赖
+
+    uvicorn.run("src.main:app", host=host, port=port, reload=reload)
+
+
+if __name__ == "__main__":
+    run()

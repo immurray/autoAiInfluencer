@@ -38,6 +38,13 @@
    cp .env.example .env
    ```
 
+   程序启动时会自动按以下顺序加载 `.env` 文件：
+
+   1. 当前工作目录（通常是仓库根目录）中的 `.env`。
+   2. 若你在配置文件目录（如 `auto_ai_influencer/` 或 `src/`）也维护了 `.env`，系统会将其中未定义的变量补充加载。
+
+   因此通常只需在仓库根目录配置一次 `.env` 即可，确保 `OPENAI_API_KEY` 等敏感信息能够正确注入。
+
    | 环境变量 | 说明 |
    | --- | --- |
    | `TWITTER_API_KEY`、`TWITTER_API_SECRET`、`TWITTER_ACCESS_TOKEN`、`TWITTER_ACCESS_TOKEN_SECRET`、`TWITTER_BEARER_TOKEN` | 在 [X Developer Portal](https://developer.twitter.com/) 申请的 API 凭证，缺失时仅能 dry-run。 |

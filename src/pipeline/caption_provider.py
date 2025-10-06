@@ -8,6 +8,7 @@ from typing import Optional
 import json
 import logging
 import random
+import requests
 
 from ..config import AIPipelineConfig
 from ..database import Database
@@ -46,6 +47,7 @@ class CaptionProvider:
         self._log_file.parent.mkdir(parents=True, exist_ok=True)
 
         self._client = None
+        self._http_fallback_enabled = bool(config.openai_api_key)
         if config.openai_api_key and OpenAI is not None:
             try:
                 self._client = OpenAI(api_key=config.openai_api_key)
@@ -68,6 +70,14 @@ class CaptionProvider:
                 return CaptionResult(text=caption, provider="openai", metadata=metadata)
             except Exception as exc:  # pylint: disable=broad-except
                 self._logger.exception("OpenAI 文案生成失败：%s", exc)
+
+        if self._http_fallback_enabled and self._config.openai_api_key:
+            try:
+                caption = self._call_openai_http(image_path, style)
+                self._log_caption(image_path, caption, "openai_http", metadata)
+                return CaptionResult(text=caption, provider="openai_http", metadata=metadata)
+            except Exception as exc:  # pylint: disable=broad-except
+                self._logger.exception("OpenAI HTTP 文案生成失败：%s", exc)
 
         caption = self._generate_from_template(image_path, style)
         self._log_caption(image_path, caption, "template", metadata)
@@ -96,6 +106,50 @@ class CaptionProvider:
         text = (choice.message.content or "").strip()
         if not text:
             raise ValueError("OpenAI 返回内容为空")
+        return text
+
+    def _call_openai_http(self, image_path: Path, style: str) -> str:
+        """使用 HTTP 调用 OpenAI 接口的兜底逻辑。"""
+
+        if not self._config.openai_api_key:
+            raise ValueError("未配置 OpenAI API Key")
+
+        prompt = (
+            f"请为文件名为 {image_path.name} 的图片编写一段适合 X 平台的中文文案，"
+            f"整体风格为 {style}，需要包含 2-3 个 emoji 与至少 2 个话题标签，"
+            "总长度控制在 100 字以内。"
+        )
+        if self._prompt:
+            prompt = f"{self._prompt}\n\n{prompt}"
+
+        headers = {
+            "Authorization": f"Bearer {self._config.openai_api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": self._model,
+            "messages": [
+                {"role": "system", "content": "你是一名资深新媒体编辑。"},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.8,
+            "max_tokens": 200,
+        }
+
+        response = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=30,
+        )
+        response.raise_for_status()
+        data = response.json()
+        choices = data.get("choices", [])
+        if not choices:
+            raise ValueError("OpenAI HTTP 返回内容为空")
+        text = (choices[0].get("message", {}).get("content", "")).strip()
+        if not text:
+            raise ValueError("OpenAI HTTP 返回文本为空")
         return text
 
     def _generate_from_template(self, image_path: Path, style: str) -> str:

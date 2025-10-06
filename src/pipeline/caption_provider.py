@@ -15,8 +15,14 @@ from ..database import Database
 
 try:  # pragma: no cover
     from openai import OpenAI
+    from openai import AuthenticationError as OpenAIAuthError
 except Exception:  # pylint: disable=broad-except
     OpenAI = None  # type: ignore
+
+    class OpenAIAuthError(Exception):
+        """在缺少 openai 库时兜底的认证错误类型。"""
+
+        pass
 
 
 @dataclass
@@ -68,6 +74,8 @@ class CaptionProvider:
                 caption = self._call_openai(image_path, style)
                 self._log_caption(image_path, caption, "openai", metadata)
                 return CaptionResult(text=caption, provider="openai", metadata=metadata)
+            except OpenAIAuthError as exc:  # pragma: no cover - 仅在真实调用时触发
+                self._handle_openai_auth_error("OpenAI SDK", exc)
             except Exception as exc:  # pylint: disable=broad-except
                 self._logger.exception("OpenAI 文案生成失败：%s", exc)
 
@@ -76,6 +84,11 @@ class CaptionProvider:
                 caption = self._call_openai_http(image_path, style)
                 self._log_caption(image_path, caption, "openai_http", metadata)
                 return CaptionResult(text=caption, provider="openai_http", metadata=metadata)
+            except requests.exceptions.HTTPError as exc:
+                if exc.response is not None and exc.response.status_code == 401:
+                    self._handle_openai_auth_error("OpenAI HTTP", exc)
+                else:
+                    self._logger.exception("OpenAI HTTP 文案生成失败：%s", exc)
             except Exception as exc:  # pylint: disable=broad-except
                 self._logger.exception("OpenAI HTTP 文案生成失败：%s", exc)
 
@@ -183,6 +196,14 @@ class CaptionProvider:
                 fp.write(json.dumps(record, ensure_ascii=False) + "\n")
         except Exception as exc:  # pylint: disable=broad-except
             self._logger.exception("写入 caption 日志文件失败：%s", exc)
+
+    def _handle_openai_auth_error(self, provider: str, exc: Exception) -> None:
+        """当检测到 OpenAI 返回 401 时，关闭后续云端调用。"""
+
+        message = getattr(exc, "message", str(exc))
+        self._logger.error("%s 返回未授权错误，已停用 OpenAI 文案：%s", provider, message)
+        self._client = None
+        self._http_fallback_enabled = False
 
 
 __all__ = ["CaptionProvider", "CaptionResult"]

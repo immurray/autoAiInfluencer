@@ -27,10 +27,22 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _load_environment(config_path: Path) -> None:
+    """加载环境变量，兼容工作目录与配置同级的 .env 文件。"""
+
+    # 先尝试加载当前工作目录或其父级中的 .env
+    load_dotenv()
+
+    # 如果配置文件所在目录有单独的 .env，则额外加载但不覆盖已有值
+    env_path = (config_path.parent / ".env").resolve()
+    if env_path.exists():
+        load_dotenv(dotenv_path=env_path, override=False)
+
+
 def create_components(config_path: Path) -> tuple[AppConfig, BotRunner]:
     """根据配置创建运行所需的核心组件。"""
 
-    load_dotenv()
+    _load_environment(config_path)
     config = load_config(config_path)
     setup_logging(config.log_path)
 

@@ -11,6 +11,7 @@ import uuid
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 
 from auto_ai_influencer.logging_config import setup_logging
 from auto_ai_influencer.poster import TweetPoster
@@ -71,6 +72,183 @@ def create_app(config_path: Path | None = None) -> FastAPI:
     )
 
     app.state.context = context
+
+    @app.get("/", response_class=HTMLResponse)
+    async def index() -> str:
+        """提供一个轻量的可视化控制台，方便查看文档与常用操作。"""
+
+        return """
+        <!DOCTYPE html>
+        <html lang=\"zh-CN\">
+        <head>
+            <meta charset=\"utf-8\" />
+            <title>AI 虚拟人自动运营控制台</title>
+            <style>
+                :root {
+                    color-scheme: light dark;
+                    font-family: \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif;
+                    background: #f5f7fa;
+                }
+                body {
+                    margin: 0;
+                    padding: 2.5rem clamp(1rem, 3vw, 3rem);
+                    background: #f5f7fa;
+                    color: #1f2933;
+                }
+                h1 {
+                    margin-top: 0;
+                    font-size: clamp(1.8rem, 2.5vw, 2.6rem);
+                }
+                a.button, button {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 0.25rem;
+                    padding: 0.6rem 1.2rem;
+                    margin: 0.25rem 0.5rem 0.25rem 0;
+                    border-radius: 999px;
+                    border: 1px solid #2563eb;
+                    background: #2563eb;
+                    color: #fff;
+                    font-weight: 600;
+                    cursor: pointer;
+                    text-decoration: none;
+                    transition: filter 0.2s ease;
+                }
+                a.button:hover, button:hover {
+                    filter: brightness(1.05);
+                }
+                section {
+                    background: rgba(255, 255, 255, 0.86);
+                    border-radius: 18px;
+                    padding: 1.5rem;
+                    margin-top: 1.8rem;
+                    box-shadow: 0 18px 38px rgba(15, 23, 42, 0.08);
+                }
+                pre {
+                    background: rgba(15, 23, 42, 0.85);
+                    color: #f8fafc;
+                    padding: 1rem;
+                    border-radius: 12px;
+                    overflow-x: auto;
+                    white-space: pre-wrap;
+                    word-break: break-all;
+                }
+                ul {
+                    padding-left: 1.2rem;
+                    line-height: 1.65;
+                }
+                iframe {
+                    width: 100%;
+                    min-height: 520px;
+                    border: none;
+                    border-radius: 12px;
+                    box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.25);
+                    background: #fff;
+                }
+                footer {
+                    margin-top: 2rem;
+                    font-size: 0.85rem;
+                    color: #64748b;
+                    text-align: center;
+                }
+            </style>
+        </head>
+        <body>
+            <header>
+                <h1>AI 虚拟人自动运营控制台</h1>
+                <p>这里提供服务健康状态、最近任务与接口文档的快速入口，便于演示与调试。</p>
+                <div>
+                    <a class=\"button\" href=\"/docs\" target=\"_blank\" rel=\"noreferrer\">打开交互式文档</a>
+                    <button id=\"refresh-health\">刷新服务状态</button>
+                    <button id=\"trigger-run\">手动触发流水线</button>
+                    <button id=\"load-history\">查看最近发文记录</button>
+                </div>
+            </header>
+
+            <section>
+                <h2>服务状态</h2>
+                <pre id=\"health\">点击“刷新服务状态”以加载实时信息。</pre>
+            </section>
+
+            <section>
+                <h2>最近发文记录</h2>
+                <ul id=\"history-list\"><li>点击“查看最近发文记录”获取最新数据。</li></ul>
+            </section>
+
+            <section>
+                <h2>接口文档预览</h2>
+                <iframe src=\"/docs\" title=\"FastAPI 文档\"></iframe>
+            </section>
+
+            <footer>如需更多高级功能，请直接使用顶部的交互式文档。</footer>
+
+            <script>
+            const healthOutput = document.querySelector('#health');
+            const historyList = document.querySelector('#history-list');
+
+            function showToast(message, type = 'info') {
+                const toast = document.createElement('div');
+                toast.textContent = message;
+                toast.style.position = 'fixed';
+                toast.style.right = '1.5rem';
+                toast.style.bottom = '1.5rem';
+                toast.style.padding = '0.75rem 1.2rem';
+                toast.style.borderRadius = '999px';
+                toast.style.fontWeight = '600';
+                toast.style.background = type === 'error' ? '#ef4444' : '#10b981';
+                toast.style.color = '#fff';
+                toast.style.boxShadow = '0 18px 38px rgba(15, 23, 42, 0.18)';
+                toast.style.zIndex = '9999';
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 2600);
+            }
+
+            document.querySelector('#refresh-health').addEventListener('click', async () => {
+                healthOutput.textContent = '正在加载...';
+                try {
+                    const resp = await fetch('/health');
+                    const data = await resp.json();
+                    healthOutput.textContent = JSON.stringify(data, null, 2);
+                } catch (error) {
+                    healthOutput.textContent = '加载失败：' + error;
+                }
+            });
+
+            document.querySelector('#trigger-run').addEventListener('click', async () => {
+                try {
+                    const resp = await fetch('/pipeline/run', { method: 'POST' });
+                    const data = await resp.json();
+                    showToast(data.message || '流水线任务已提交');
+                    if (data.note) {
+                        showToast(data.note, 'error');
+                    }
+                } catch (error) {
+                    showToast('触发失败：' + error, 'error');
+                }
+            });
+
+            document.querySelector('#load-history').addEventListener('click', async () => {
+                historyList.innerHTML = '<li>正在读取...</li>';
+                try {
+                    const resp = await fetch('/posts/history?limit=10');
+                    const data = await resp.json();
+                    if (!data.items || data.items.length === 0) {
+                        historyList.innerHTML = '<li>暂无记录。</li>';
+                        return;
+                    }
+                    historyList.innerHTML = data.items.map(item => {
+                        const createdAt = item.created_at || item.createdAt || item.created || '未知时间';
+                        const caption = item.caption || '（无文案）';
+                        return `<li><strong>${createdAt}</strong> - ${caption}</li>`;
+                    }).join('');
+                } catch (error) {
+                    historyList.innerHTML = `<li>读取失败：${error}</li>`;
+                }
+            });
+            </script>
+        </body>
+        </html>
+        """
 
     @app.on_event("startup")
     async def _startup() -> None:

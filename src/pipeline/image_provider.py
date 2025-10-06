@@ -111,6 +111,9 @@ class ImageProvider:
                 data=json.dumps(payload),
                 timeout=30,
             )
+            if response.status_code == 401:
+                self._logger.error("Replicate 返回 401 未授权，请确认 API Token 是否有效。")
+                return None
             response.raise_for_status()
             data = response.json()
         except Exception as exc:  # pylint: disable=broad-except

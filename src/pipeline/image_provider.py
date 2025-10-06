@@ -53,20 +53,24 @@ class ImageProvider:
         if local:
             return local
 
-        if not self._config.enable or not self._config.is_cloud_enabled:
-            self._logger.info("未启用云端图片生成，将返回默认测试图。")
-            return self._default_image()
-
-        generator = {
-            "replicate": self._generate_with_replicate,
-            "leonardo": self._generate_with_leonardo,
-        }.get(self._config.image_source, self._generate_with_replicate)
-
-        generated = generator()
+        generated = self._generate_cloud_image(force=False)
         if generated:
             return generated
 
-        self._logger.warning("云端生成失败，回退默认测试图。")
+        if self._config.enable and self._config.is_cloud_enabled:
+            self._logger.warning("云端生成失败，回退默认测试图。")
+        else:
+            self._logger.info("云端生成未启用，回退默认测试图。")
+        return self._default_image()
+
+    def generate_image(self) -> ImageResult:
+        """主动触发一次云端图片生成，便于前端控制台调用。"""
+
+        generated = self._generate_cloud_image(force=True)
+        if generated:
+            return generated
+
+        self._logger.warning("云端生成不可用，返回默认测试图以便调试。")
         return self._default_image()
 
     def _pick_local(self, posted: set[str]) -> Optional[ImageResult]:
@@ -87,6 +91,28 @@ class ImageProvider:
         if not target.exists():
             target.write_bytes(base64.b64decode(_DEFAULT_PLACEHOLDER))
         return ImageResult(path=target, source="default", metadata={"reason": "fallback"})
+
+    def _generate_cloud_image(self, *, force: bool) -> Optional[ImageResult]:
+        """根据配置调用云端服务生成图片。"""
+
+        if not self._config.is_cloud_enabled:
+            if force:
+                self._logger.error("当前 image_source=%s，未启用云端图片生成。", self._config.image_source)
+            return None
+
+        if not force and not self._config.enable:
+            self._logger.info("AI 流水线未启用，跳过云端图片生成。")
+            return None
+
+        generator = {
+            "replicate": self._generate_with_replicate,
+            "leonardo": self._generate_with_leonardo,
+        }.get(self._config.image_source, self._generate_with_replicate)
+
+        generated = generator()
+        if not generated and force:
+            self._logger.error("云端生成失败，请检查凭证或模型配置。")
+        return generated
 
     def _generate_with_replicate(self) -> Optional[ImageResult]:
         if requests is None:

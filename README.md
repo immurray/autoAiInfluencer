@@ -85,6 +85,7 @@ python -m src.main
 - `/health` 用于健康检查，`/pipeline/run` 可手动触发一次 AI 流水线。
 - `/posts/history` 与 `/captions/logs` 返回最新的数据库记录。
 - `/images/upload` 支持上传新素材到 `data/ready_to_post/`。
+- `/images/generate` 会调用配置的云端服务生成一张新图片并写入 `data/ready_to_post/`，便于提前备稿。
 - 默认监听地址为 `0.0.0.0:5500`，可通过 `APP_HOST`、`APP_PORT`、`APP_RELOAD` 环境变量覆盖。
 
 若仍需使用原有命令行入口，可继续执行：

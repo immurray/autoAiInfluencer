@@ -316,6 +316,24 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         target.write_bytes(content)
         return {"message": "上传成功", "filename": filename}
 
+    @app.post("/images/generate")
+    async def generate_image(ctx: AppContext = Depends(get_context)) -> Dict[str, Any]:
+        """触发云端生成一张图片并保存到待发布目录。"""
+
+        image = ctx.image_provider.generate_image()
+        success = image.source != "default"
+        message = "生成成功" if success else "已返回默认测试图"
+        payload: Dict[str, Any] = {
+            "message": message,
+            "filename": image.path.name,
+            "source": image.source,
+        }
+        if image.metadata:
+            payload["metadata"] = image.metadata
+        if not success:
+            payload["note"] = "请检查配置中的云端服务是否可用。"
+        return payload
+
     return app
 
 

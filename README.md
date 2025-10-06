@@ -30,6 +30,8 @@
    pip install -r requirements.txt
    ```
 
+   > 提示：项目已适配新版 `openai` 官方 SDK，支持 `1.30.1` 至 `2.x` 的主要版本。若你已全局安装了 `openai`，请确认版本满足 `pip show openai` 输出的要求，避免旧版本接口缺失。 
+
 ## 准备凭证与配置
 
 1. **复制环境变量模板并填写凭证**：

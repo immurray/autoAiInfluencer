@@ -114,10 +114,10 @@ python -m auto_ai_influencer.main
   "post_slots": ["11:00", "19:00"],
   "image_source": "replicate",
   "replicate_model": "stability-ai/sdxl",
-  "replicate_token": "xxx",
+  "replicate_token": "",
   "prompt_template": "portrait of a young woman, soft light, film tone",
   "caption_style": "soft_romance",
-  "openai_api_key": "xxx"
+  "openai_api_key": ""
 }
 ```
 
@@ -128,7 +128,7 @@ python -m auto_ai_influencer.main
   4. 通过 Tweepy/X API 发布，dry-run 模式下仅记录日志。
   5. 将图片名称、文案、执行时间与结果写入 `post_history`，文案写入 `caption_log`。
 - 缺少任何 API Key 时，系统会自动回退到本地模板与默认测试图片，仍可 dry-run 验证流程。
-- `openai_api_key`、`replicate_token` 等敏感信息也可放置在 `.env` 中，程序会优先读取。
+- `openai_api_key`、`replicate_token` 等敏感信息请通过环境变量或 `.env` 提供，示例中留空表示需自行填写。
 
 ### Dry-Run 说明
 

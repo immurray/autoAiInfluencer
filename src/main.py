@@ -688,7 +688,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
                     promptField.dataset.original = promptValue;
 
                     var templates = Array.isArray(caption.templates) ? caption.templates : [];
-                    var templateValue = templates.join('\n');
+                    var templateValue = templates.join("\n");
                     templatesField.value = templateValue;
                     templatesField.dataset.source = caption.templates_file ? 'file' : 'inline';
                     templatesField.dataset.original = templateValue;

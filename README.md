@@ -49,14 +49,27 @@
 
    | 环境变量 | 说明 |
    | --- | --- |
-   | `TWITTER_API_KEY`、`TWITTER_API_SECRET`、`TWITTER_ACCESS_TOKEN`、`TWITTER_ACCESS_TOKEN_SECRET`、`TWITTER_BEARER_TOKEN` | 在 [X Developer Portal](https://developer.twitter.com/) 申请的 API 凭证，缺失时仅能 dry-run。 |
-   | `OPENAI_API_KEY` | 用于文案生成的 OpenAI API 密钥，留空则使用本地模板。 |
+| `TWITTER_API_KEY`、`TWITTER_API_SECRET`、`TWITTER_ACCESS_TOKEN`、`TWITTER_ACCESS_TOKEN_SECRET`、`TWITTER_BEARER_TOKEN` | 在 [X Developer Portal](https://developer.twitter.com/) 申请的 API 凭证，缺失时仅能 dry-run。 |
+| `OPENAI_API_KEY` | 用于文案生成的 OpenAI API 密钥，留空则使用本地模板。 |
 
-   > 提示：若暂时不打算真实发文，可留空推特凭证并保持 `config.json` 中的 `"dry_run": true`。
+> 提示：若暂时不打算真实发文，可留空推特凭证并保持 `config.json` 中的 `"dry_run": true`。
+
+### X（Twitter） 回调地址与域名配置指引
+
+自 2023 年起，X 平台在创建或升级应用凭证时，要求必须填写 **回调地址（Callback URL）** 与 **应用域名（Website URL）** 才能启用 OAuth1.0a User Context，从而生成 `TWITTER_ACCESS_TOKEN` 与 `TWITTER_ACCESS_TOKEN_SECRET`。如果你仅在本地运行本项目，可按以下步骤配置：
+
+1. 进入 [X Developer Portal](https://developer.twitter.com/) → “Projects & Apps” → 选择你的 App。
+2. 在 “User authentication settings” 中点击 “Edit”，选择 `Web App` 类型，勾选 `Read`、`Write` 与 `Offline access`（用于刷新 Token）。
+3. 在 **Callback URI / Redirect URL** 中填写 `https://127.0.0.1/callback`，该地址虽不会真实被访问，但符合 X 的格式要求，方便你在本地调试。
+4. 在 **Website URL** 中填写 `https://127.0.0.1` 或你实际部署的域名；若已有自有站点，也可以直接使用真实主页。
+5. 如需上线到公网，请将 Callback 与 Website 改成实际可访问的 HTTPS 域名，例如 `https://your-domain.com/x/callback`。
+6. 保存设置后，在 “Keys and tokens” 页签重新生成 `Access Token` 与 `Access Token Secret`，并写入 `.env`。
+
+> 如果你已经拥有老版本的 Token，但 X 平台提示“缺少回调地址”或无法生成新 Token，多半是因为 App 尚未完成上述字段配置，按步骤填好并保存即可解决。
 
 2. **配置 `config.json`**：
 
-   `config.json` 控制运行参数，可根据需要调整。主要字段说明如下：
+`config.json` 控制运行参数，可根据需要调整。主要字段说明如下：
 
    | 字段 | 默认值 | 作用 |
    | --- | --- | --- |

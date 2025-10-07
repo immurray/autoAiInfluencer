@@ -746,11 +746,14 @@ def create_app(config_path: Path | None = None) -> FastAPI:
                             var caption = data.caption || {};
                             var templates = Array.isArray(caption.templates) ? caption.templates : [];
 
-                            var templateList = templates.length
-                                ? '<ol>' + templates.map(function (item) {
+                            var templateList;
+                            if (templates.length > 0) {
+                                templateList = '<ol>' + templates.map(function (item) {
                                     return '<li>' + escapeHtml(item) + '</li>';
-                                }).join('') + '</ol>'
-                                : '<p>当前未设置模板。</p>';
+                                }).join('') + '</ol>';
+                            } else {
+                                templateList = '<p>当前未设置模板。</p>';
+                            }
 
                             captionConfig.innerHTML =
                                 '<p><strong>模型：</strong> ' + escapeHtml(caption.model || '未配置') + '</p>' +

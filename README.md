@@ -145,7 +145,7 @@ python -m auto_ai_influencer.main
   "enable": true,
   "post_slots": ["11:00", "19:00"],
   "image_source": "replicate",
-  "replicate_model": "stability-ai/stable-diffusion-xl:aa3779d...",
+  "replicate_model": "stability-ai/stable-diffusion-xl",
   "replicate_token": "",
   "prompt_template": "portrait of a young woman, soft light, film tone",
   "caption_style": "soft_romance",
@@ -163,8 +163,8 @@ python -m auto_ai_influencer.main
 - `openai_api_key`、`replicate_token` 等敏感信息请通过环境变量或 `.env` 提供，示例中留空表示需自行填写。
 - 使用 Replicate 时需要同时在 `config.json` 的 `ai_pipeline` 中填写两项内容：
   - `replicate_token`：可在 Replicate 官网的 **Account → API Tokens** 页面生成，也可以通过设置环境变量 `REPLICATE_API_TOKEN` 提供；
-  - `replicate_model`：填写目标模型的 **Version ID**（`owner/model:hash` 格式），可在模型页面的 “API” 或 “Versions” 栏复制，例如 `stability-ai/stable-diffusion-xl:aa3779d5b9a0...`。
-- 如果仅填写 `owner/model`，系统会在调用前自动查询最新版本并补全 `replicate_model`，同时会在日志中提示补全结果；但仍建议显式写明版本哈希，以免模型更新导致生成结果变化或出现 422 错误。
+  - `replicate_model`：填写目标模型的 **Version ID**（`owner/model:hash` 格式），也可以仅填写 `owner/model`。如果缺少版本哈希，系统会在调用前自动查询最新版本并补全，并在日志中输出最终使用的版本。例如，示例配置中的 `stability-ai/stable-diffusion-xl` 会在运行时被补全为最新的版本 ID。
+  - 若需要固定在特定版本以避免模型升级带来的不确定性，可在补全后的日志中复制完整的 `owner/model:hash` 并写回配置文件。
 - 若改用 Leonardo.ai，请将 `image_source` 设置为 `leonardo`，并提供 `leonardo_token`（或环境变量 `LEONARDO_API_TOKEN`）以及 `leonardo_model`（可在 Leonardo.ai 控制台查看模型 ID）。
 
 ### Dry-Run 说明

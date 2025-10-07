@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import json
+import logging
+import mimetypes
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
-import json
-import logging
 
 import tweepy
 from PIL import Image
@@ -73,8 +74,15 @@ class TweetPoster:
 
         upload_path = self._ensure_supported_media(image_path)
 
+        media_type = self._detect_media_type(upload_path)
+
         try:
-            media = self._client_v1.media_upload(filename=str(upload_path))
+            with upload_path.open("rb") as file_obj:
+                media = self._client_v1.media_upload(
+                    filename=str(upload_path),
+                    file=file_obj,
+                    media_type=media_type,
+                )
             response = self._client_v2.create_tweet(text=text, media_ids=[media.media_id])
         except tweepy.errors.Forbidden as exc:
             detail = self._extract_twitter_error_detail(exc)
@@ -150,6 +158,26 @@ class TweetPoster:
                 return target
         except Exception as exc:  # pylint: disable=broad-except
             raise TweetPostError(f"无法处理待上传图片：{exc}") from exc
+
+    def _detect_media_type(self, image_path: Path) -> str:
+        """推断图片的 MIME 类型，确保上传时显式声明，避免服务端识别失败。"""
+
+        mime, _ = mimetypes.guess_type(str(image_path))
+        if mime:
+            return mime
+
+        try:
+            with Image.open(image_path) as image:
+                fmt = (image.format or "").upper()
+        except Exception as exc:  # pylint: disable=broad-except
+            raise TweetPostError(f"无法识别图片 MIME 类型：{exc}") from exc
+
+        if fmt:
+            mime_from_pil = Image.MIME.get(fmt)
+            if mime_from_pil:
+                return mime_from_pil
+
+        raise TweetPostError("无法识别图片的具体 MIME 类型，请检查文件格式是否受支持。")
 
 
 __all__ = ["TweetPoster", "PostResult", "TweetPostError"]

@@ -7,10 +7,23 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 import json
 import os
+import logging
 
 from dotenv import load_dotenv
 
 from auto_ai_influencer.config import AppConfig, load_config
+
+
+_PLACEHOLDER_VALUES = {
+    "xxx",
+    "your_openai_key",
+    "your-openai-key",
+    "please_replace",
+    "your_api_key",
+}
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -70,25 +83,37 @@ def load_settings(config_path: Path) -> tuple[AppConfig, AIPipelineConfig, Dict[
     caption_log_directory = _resolve_path(base_dir, ai_data.get("caption_log_directory"), "logs")
     default_image = _resolve_path(base_dir, ai_data.get("default_image"), "data/ready_to_post/default_test.png")
 
-    def _normalize_secret(value: Optional[str]) -> Optional[str]:
-        """对密钥字符串做清理，避免因空格导致认证失败。"""
+    def _normalize_secret(value: Optional[str], *, name: str) -> Optional[str]:
+        """对密钥字符串做清理，并过滤常见的占位符。"""
 
         if value is None:
             return None
+
         cleaned = value.strip()
-        return cleaned or None
+        if not cleaned:
+            return None
+
+        lowered = cleaned.lower()
+        if lowered in _PLACEHOLDER_VALUES:
+            logger.warning("检测到 %s 仍为占位符，请在配置或环境变量中填写有效密钥。", name)
+            return None
+
+        return cleaned
 
     openai_api_key = _normalize_secret(
         ai_data.get("openai_api_key")
         or os.getenv("AI_PIPELINE_OPENAI_API_KEY")
         or os.getenv("OPENAI_API_KEY")
-        or app_config.openai_api_key
+        or app_config.openai_api_key,
+        name="openai_api_key",
     )
     replicate_token = _normalize_secret(
-        ai_data.get("replicate_token") or os.getenv("REPLICATE_API_TOKEN")
+        ai_data.get("replicate_token") or os.getenv("REPLICATE_API_TOKEN"),
+        name="replicate_token",
     )
     leonardo_token = _normalize_secret(
-        ai_data.get("leonardo_token") or os.getenv("LEONARDO_API_TOKEN")
+        ai_data.get("leonardo_token") or os.getenv("LEONARDO_API_TOKEN"),
+        name="leonardo_token",
     )
 
     raw_slots = ai_data.get("post_slots", [])

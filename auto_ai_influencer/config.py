@@ -7,6 +7,18 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 import json
 import os
+import logging
+
+_PLACEHOLDER_VALUES = {
+    "xxx",
+    "your_openai_key",
+    "your-openai-key",
+    "please_replace",
+    "your_api_key",
+}
+
+
+logger = logging.getLogger(__name__)
 
 
 def mask_sensitive_value(value: Optional[str]) -> str:
@@ -153,6 +165,9 @@ def load_config(path: Path) -> AppConfig:
     )
 
     raw_openai_key = os.getenv("OPENAI_API_KEY")
+    if raw_openai_key and raw_openai_key.strip().lower() in _PLACEHOLDER_VALUES:
+        logger.warning("检测到 OPENAI_API_KEY 仍为占位符，请设置有效密钥后再运行。")
+        raw_openai_key = ""
     openai_api_key = raw_openai_key.strip() if raw_openai_key else None
     # 打印关键提示，帮助确认环境变量是否生效
     masked_key = mask_sensitive_value(openai_api_key)

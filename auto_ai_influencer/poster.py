@@ -9,6 +9,7 @@ import json
 import logging
 
 import tweepy
+from PIL import Image
 
 from .config import TwitterCredentials
 
@@ -70,8 +71,10 @@ class TweetPoster:
         assert self._client_v1 is not None
         assert self._client_v2 is not None
 
+        upload_path = self._ensure_supported_media(image_path)
+
         try:
-            media = self._client_v1.media_upload(filename=str(image_path))
+            media = self._client_v1.media_upload(filename=str(upload_path))
             response = self._client_v2.create_tweet(text=text, media_ids=[media.media_id])
         except tweepy.errors.Forbidden as exc:
             detail = self._extract_twitter_error_detail(exc)
@@ -128,6 +131,25 @@ class TweetPoster:
                 return str(payload)
 
         return str(exc)
+
+    def _ensure_supported_media(self, image_path: Path) -> Path:
+        """确保上传的图片为 X 平台支持的格式，必要时自动转码。"""
+
+        try:
+            with Image.open(image_path) as image:
+                fmt = (image.format or "").upper()
+                if fmt in {"PNG", "JPEG", "JPG", "GIF"}:
+                    return image_path
+
+                target = image_path.with_name(f"{image_path.stem}_twitter.png")
+                self._logger.info("检测到图片格式 %s，自动转码为 PNG：%s", fmt or "unknown", target.name)
+
+                if image.mode not in {"RGB", "RGBA"}:
+                    image = image.convert("RGBA")
+                image.save(target, format="PNG")
+                return target
+        except Exception as exc:  # pylint: disable=broad-except
+            raise TweetPostError(f"无法处理待上传图片：{exc}") from exc
 
 
 __all__ = ["TweetPoster", "PostResult", "TweetPostError"]

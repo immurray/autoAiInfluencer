@@ -196,6 +196,43 @@ python -m auto_ai_influencer.main
 
 日志默认输出到终端与 `data/bot.log`。可根据需要在 `config.json` 中调整路径。
 
+## 常见问题：如何定时、干预与自动化运行？
+
+### 1. 发送频率是怎么控制的？
+
+- **基础调度（`scheduler` 节点）**：默认按 `interval_minutes`（例如 60 分钟）循环执行一次 `auto_ai_influencer.main` 中的主流程，适合“有素材就发送”的轮询模式。
+- **AI 流水线（`ai_pipeline` 节点）**：当 `enable` 设为 `true` 时，会启用基于 APScheduler 的“定点投放”机制，仅在 `post_slots` 指定的时间（例如 `["11:00", "19:00"]`）触发完整的图片生成与发帖流程。该机制会覆盖基础调度的频率，只在设定时间点运行一次。
+- **如何自定义**：
+  1. 修改 `config.json` → `scheduler.interval_minutes` 调整循环间隔；
+  2. 或将 `ai_pipeline.post_slots` 改成你希望的每日时间（24 小时制，如 `"08:30"`），列表可配置任意多个时间点；
+  3. 若需要完全关闭自动调度，可设置 `ai_pipeline.enable` 为 `false`，并手动调用 API（见下文）。
+
+### 2. 我可以如何干预图片与文案？
+
+- **图片素材优先级**：流水线先检查 `data/ready_to_post/`，若存在文件会优先使用；只在为空时才调用在线生成服务（如 Replicate / Leonardo）。可将你审核后的图片放到该目录，即可确保被优先投放。
+- **图片生成规则**：
+  - `ai_pipeline.prompt_template` 控制生成模型的提示词；
+  - `ai_pipeline.image_source` 决定使用哪种生成渠道（`local` / `replicate` / `leonardo`），未配置 Token 时会自动退回本地素材；
+  - 需要固定模型版本时填写 `replicate_model_version` 或 `leonardo_model`。
+- **文案干预**：
+  - `caption.prompt` 用于指导 OpenAI 模型写作风格；
+  - `caption.templates` 是无 API Key 时的后备模板，可按需求扩展；
+  - `tweet.prefix`、`tweet.suffix` 可以追加品牌口号或标签；
+  - 想要固定某些文案，可把它们写入 `data/caption_overrides/`，在运行前由你自定义逻辑读取（可在 `auto_ai_influencer/caption.py` 中扩展）。
+- **人工审核流程建议**：利用数据库 `posts` 表保存的草稿记录，你可以在 dry-run 模式下先跑一遍，确认文案与图片无误后，再关闭 dry-run 进行真实发布。
+
+### 3. 如何让程序自动运行？
+
+1. **命令行常驻**：执行 `python -m auto_ai_influencer.main`，保持终端打开即可按照调度自动运行。
+2. **FastAPI + 后台服务**：运行 `python -m src.main` 或 `uvicorn src.main:app --host 0.0.0.0 --port 5500`，系统会在启动时加载调度器并自动执行 `ai_pipeline` 规则，同时提供 REST API：
+   - `POST /pipeline/run`：手动触发一次完整流程，可结合 Webhook 使用；
+   - 若你在代码中启用了对应路由，也可以新增 `POST /pipeline/pause` / `POST /pipeline/resume` 控制调度。
+3. **系统服务托管**：在生产环境中，可使用 `systemd`、`pm2` 或 Docker 等方式让上述命令随系统启动：
+   - 例：创建 `systemd` 服务文件，指定 `ExecStart=/usr/bin/python -m src.main`；
+   - 例：使用 Docker 时，在 `Dockerfile` 中设置 `CMD ["python", "-m", "src.main"]`。
+
+通过以上配置，即可实现“定时自动发送 + 人工干预内容 + 全自动运行”的完整闭环。
+
 ## 注意事项
 
 - 首次运行前请确认 `images/` 与 `data/` 目录存在（仓库已包含占位文件）。

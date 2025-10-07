@@ -504,8 +504,7 @@
             var templatesField = captionForm.templates;
             var templatesRaw = templatesField.value;
             var templates = templatesRaw
-                .split('
-')
+                .split('\n')
                 .map(function (item) {
                     return item.trim();
                 })

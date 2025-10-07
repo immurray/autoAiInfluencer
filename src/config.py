@@ -37,6 +37,7 @@ class AIPipelineConfig:
     caption_style: str = "default"
     openai_api_key: Optional[str] = None
     replicate_model: Optional[str] = None
+    replicate_model_version: Optional[str] = None
     replicate_token: Optional[str] = None
     leonardo_model: Optional[str] = None
     leonardo_token: Optional[str] = None
@@ -130,6 +131,7 @@ def load_settings(config_path: Path) -> tuple[AppConfig, AIPipelineConfig, Dict[
         caption_style=ai_data.get("caption_style", "default"),
         openai_api_key=openai_api_key,
         replicate_model=ai_data.get("replicate_model"),
+        replicate_model_version=ai_data.get("replicate_model_version"),
         replicate_token=replicate_token,
         leonardo_model=ai_data.get("leonardo_model"),
         leonardo_token=leonardo_token,

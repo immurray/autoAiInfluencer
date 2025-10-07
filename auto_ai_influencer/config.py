@@ -153,7 +153,7 @@ def load_config(path: Path) -> AppConfig:
         initial_run=bool(scheduler_data.get("initial_run", True)),
     )
 
-    dry_run = bool(data.get("dry_run", True))
+    dry_run = bool(data.get("dry_run", False))
     max_posts_per_cycle = int(data.get("max_posts_per_cycle", 1))
 
     twitter = TwitterCredentials(

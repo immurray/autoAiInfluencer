@@ -54,7 +54,7 @@
 | `REPLICATE_API_TOKEN` | 用于调用 Replicate 图片生成服务的 Token，可在 [Replicate 个人设置页](https://replicate.com/account/api-tokens) 创建。 |
 | `LEONARDO_API_TOKEN` | Leonardo.ai 生成服务的 Token，仅在启用 `image_source: leonardo` 时需要。 |
 
-> 提示：若暂时不打算真实发文，可留空推特凭证并保持 `config.json` 中的 `"dry_run": true`。
+> 提示：若暂时不打算真实发文，可留空推特凭证并将 `config.json` 中的 `"dry_run"` 改为 `true`。
 
 ### X（Twitter） 回调地址与域名配置指引
 
@@ -95,7 +95,7 @@
    | `image_directory` | `./images` | 待发布图片所在目录，系统会按文件名排序并跳过已发布文件。 |
    | `database_path` | `./data/auto_ai.db` | SQLite 数据库存储路径。 |
    | `log_path` | `./data/bot.log` | 日志输出文件。 |
-   | `dry_run` | `true` | 是否仅模拟发布（不调用 X API）。 |
+| `dry_run` | `false` | 是否仅模拟发布（不调用 X API）。 |
    | `max_posts_per_cycle` | `1` | 每轮调度最多发出的帖子数量。 |
    | `caption.model` | `gpt-4o-mini` | 使用的 OpenAI 模型名称，可改为已开通的模型。 |
    | `caption.prompt` / `caption.templates` | 见文件 | 文案生成提示词与后备模板，模板中可使用 `{filename}` 占位符。 |
@@ -145,7 +145,8 @@ python -m auto_ai_influencer.main
   "enable": true,
   "post_slots": ["11:00", "19:00"],
   "image_source": "replicate",
-  "replicate_model": "stability-ai/stable-diffusion-xl",
+  "replicate_model": "google/imagen-4",
+  "replicate_model_version": "",
   "replicate_token": "",
   "prompt_template": "portrait of a young woman, soft light, film tone",
   "caption_style": "soft_romance",
@@ -161,10 +162,11 @@ python -m auto_ai_influencer.main
   5. 将图片名称、文案、执行时间与结果写入 `post_history`，文案写入 `caption_log`。
 - 缺少任何 API Key 时，系统会自动回退到本地模板与默认测试图片，仍可 dry-run 验证流程。
 - `openai_api_key`、`replicate_token` 等敏感信息请通过环境变量或 `.env` 提供，示例中留空表示需自行填写。
-- 使用 Replicate 时需要同时在 `config.json` 的 `ai_pipeline` 中填写两项内容：
+- 使用 Replicate 时需要同时在 `config.json` 的 `ai_pipeline` 中填写以下内容：
   - `replicate_token`：可在 Replicate 官网的 **Account → API Tokens** 页面生成，也可以通过设置环境变量 `REPLICATE_API_TOKEN` 提供；
-  - `replicate_model`：填写目标模型的 **Version ID**（`owner/model:hash` 格式），也可以仅填写 `owner/model`。如果缺少版本哈希，系统会在调用前自动查询最新版本并补全，并在日志中输出最终使用的版本。例如，示例配置中的 `stability-ai/stable-diffusion-xl` 会在运行时被补全为最新的版本 ID。
-  - 若需要固定在特定版本以避免模型升级带来的不确定性，可在补全后的日志中复制完整的 `owner/model:hash` 并写回配置文件。
+  - `replicate_model`：填写目标模型名称（`owner/model` 格式）。示例中默认提供了当前较常见的 `google/imagen-4`，可根据账号权限调整为其他模型，如 `black-forest-labs/flux-1.1-pro` 等。
+  - `replicate_model_version`（可选）：当某些模型需要指定版本哈希或账号无法访问模型最新版本时，可在 Replicate 控制台复制版本 ID（形如 `1234567890abcdef`）写入此字段。若保留为空字符串，系统会在运行时尝试自动查询最新版本；若查询接口返回 404（表示模型无权限或已下架），日志会提示改为手动填写该字段。
+  - 若需要固定在特定版本以避免模型升级带来的不确定性，可在日志中看到的完整 `owner/model:hash` 复制回配置文件，或直接填写 `replicate_model_version`。
 - 若改用 Leonardo.ai，请将 `image_source` 设置为 `leonardo`，并提供 `leonardo_token`（或环境变量 `LEONARDO_API_TOKEN`）以及 `leonardo_model`（可在 Leonardo.ai 控制台查看模型 ID）。
 
 ### Dry-Run 说明

@@ -307,6 +307,15 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             </section>
 
             <section>
+                <h2>文案提示词配置</h2>
+                <p>点击下方按钮即可查看当前的提示词与模板，便于在更新配置前了解现状。</p>
+                <button id=\"load-caption-config\">加载文案配置</button>
+                <div id=\"caption-config\">
+                    <p>尚未加载配置。</p>
+                </div>
+            </section>
+
+            <section>
                 <h2>最近发文记录</h2>
                 <ul id=\"history-list\"><li>点击“查看最近发文记录”获取最新数据。</li></ul>
             </section>
@@ -321,6 +330,20 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             <script>
             const healthOutput = document.querySelector('#health');
             const historyList = document.querySelector('#history-list');
+            const captionConfig = document.querySelector('#caption-config');
+
+            function escapeHtml(value) {
+                if (value === null || value === undefined) {
+                    return '';
+                }
+                return String(value).replace(/[&<>"']/g, (ch) => ({
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '"': '&quot;',
+                    "'": '&#39;',
+                })[ch] || ch);
+            }
 
             function showToast(message, type = 'info') {
                 const toast = document.createElement('div');
@@ -347,6 +370,30 @@ def create_app(config_path: Path | None = None) -> FastAPI:
                     healthOutput.textContent = JSON.stringify(data, null, 2);
                 } catch (error) {
                     healthOutput.textContent = '加载失败：' + error;
+                }
+            });
+
+            document.querySelector('#load-caption-config').addEventListener('click', async () => {
+                captionConfig.innerHTML = '<p>正在读取配置...</p>';
+                try {
+                    const resp = await fetch('/settings/ai');
+                    const data = await resp.json();
+                    const caption = data.caption || {};
+                    const templates = Array.isArray(caption.templates) ? caption.templates : [];
+
+                    const templateList = templates.length
+                        ? `<ol>${templates.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ol>`
+                        : '<p>当前未设置模板。</p>';
+
+                    captionConfig.innerHTML = `
+                        <p><strong>模型：</strong> ${escapeHtml(caption.model || '未配置')}</p>
+                        <p><strong>提示词：</strong></p>
+                        <pre>${escapeHtml(caption.prompt || '未配置提示词')}</pre>
+                        <p><strong>模板列表：</strong></p>
+                        ${templateList}
+                    `;
+                } catch (error) {
+                    captionConfig.innerHTML = `<p>读取失败：${error}</p>`;
                 }
             });
 

@@ -117,16 +117,8 @@ def _resolve_path(base: Path, value: str, fallback: str) -> Path:
     return (raw if raw.is_absolute() else (base / raw)).resolve()
 
 
-def load_config(path: Path) -> AppConfig:
-    """从 JSON 文件与环境变量组合加载配置。"""
-
-    if not path.exists():
-        raise FileNotFoundError(f"配置文件不存在：{path}")
-
-    with path.open("r", encoding="utf-8") as fp:
-        data: Dict[str, Any] = json.load(fp)
-
-    base_dir = path.parent
+def build_app_config(data: Dict[str, Any], *, base_dir: Path) -> AppConfig:
+    """根据配置字典生成 AppConfig 实例。"""
 
     image_directory = _resolve_path(base_dir, data.get("image_directory", ""), "images")
     database_path = _resolve_path(base_dir, data.get("database_path", ""), "data/auto_ai.db")
@@ -187,6 +179,18 @@ def load_config(path: Path) -> AppConfig:
     )
 
 
+def load_config(path: Path) -> AppConfig:
+    """从 JSON 文件与环境变量组合加载配置。"""
+
+    if not path.exists():
+        raise FileNotFoundError(f"配置文件不存在：{path}")
+
+    with path.open("r", encoding="utf-8") as fp:
+        data: Dict[str, Any] = json.load(fp)
+
+    return build_app_config(data, base_dir=path.parent)
+
+
 __all__ = [
     "AppConfig",
     "CaptionConfig",
@@ -194,5 +198,6 @@ __all__ = [
     "SchedulerConfig",
     "TwitterCredentials",
     "load_config",
+    "build_app_config",
     "mask_sensitive_value",
 ]

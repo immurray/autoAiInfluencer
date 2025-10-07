@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 import asyncio
+import json
 import logging
 import os
 import uuid
@@ -13,6 +14,7 @@ import uuid
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel, Field
 
 from auto_ai_influencer.logging_config import setup_logging
 from auto_ai_influencer.poster import TweetPoster
@@ -31,6 +33,7 @@ class AppContext:
 
     def __init__(self, config_path: Path) -> None:
         self._config_path = config_path
+        self._override_path: Optional[Path] = None
         self.reload()
 
     @property
@@ -38,12 +41,13 @@ class AppContext:
         return self._config_path
 
     def reload(self) -> None:
-        app_config, ai_config, raw_config = load_settings(self._config_path)
+        app_config, ai_config, raw_config, override_path = load_settings(self._config_path)
         setup_logging(app_config.log_path)
 
         self.app_config = app_config
         self.ai_config = ai_config
         self.raw_config = raw_config
+        self._override_path = override_path
         self.database = Database(app_config.database_path)
         self.image_provider = ImageProvider(ai_config, self.database)
         self.caption_provider = CaptionProvider(ai_config, self.database, raw_config)
@@ -55,6 +59,126 @@ class AppContext:
             poster=self.poster,
             database=self.database,
         )
+
+    def _serialize_ai_config(self) -> Dict[str, Any]:
+        """将 AI 流水线配置转换为可返回的字典。"""
+
+        return {
+            "enable": self.ai_config.enable,
+            "post_slots": self.ai_config.post_slots,
+            "image_source": self.ai_config.image_source,
+            "prompt_template": self.ai_config.prompt_template,
+            "caption_style": self.ai_config.caption_style,
+            "openai_api_key": self.ai_config.openai_api_key,
+            "replicate_model": self.ai_config.replicate_model,
+            "replicate_model_version": self.ai_config.replicate_model_version,
+            "replicate_token": self.ai_config.replicate_token,
+            "leonardo_model": self.ai_config.leonardo_model,
+            "leonardo_token": self.ai_config.leonardo_token,
+            "ready_directory": str(self.ai_config.ready_directory),
+            "caption_log_directory": str(self.ai_config.caption_log_directory),
+            "timezone": self.ai_config.timezone,
+            "default_image": str(self.ai_config.default_image),
+        }
+
+    def get_settings_snapshot(self) -> Dict[str, Any]:
+        """返回当前生效的配置，便于接口响应。"""
+
+        caption = self.raw_config.get("caption", {})
+        return {
+            "ai_pipeline": self._serialize_ai_config(),
+            "caption": {
+                "model": caption.get("model", "gpt-4o-mini"),
+                "prompt": caption.get("prompt", ""),
+                "templates": caption.get("templates", []),
+            },
+        }
+
+    async def apply_settings_update(
+        self,
+        *,
+        ai_payload: Optional[Dict[str, Any]] = None,
+        caption_payload: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """写入配置覆盖文件并重新加载，确保 UI 修改持久化。"""
+
+        override_path = self._override_path or self._config_path
+        existing: Dict[str, Any] = {}
+        if override_path.exists():
+            try:
+                with override_path.open("r", encoding="utf-8") as fp:
+                    existing = json.load(fp)
+            except json.JSONDecodeError:
+                existing = {}
+
+        if ai_payload:
+            stored_ai = existing.get("ai_pipeline", {}).copy()
+            for key, value in ai_payload.items():
+                if isinstance(value, str):
+                    stored_ai[key] = value.strip()
+                else:
+                    stored_ai[key] = value
+            existing["ai_pipeline"] = stored_ai
+
+        if caption_payload:
+            stored_caption = existing.get("caption", {}).copy()
+            if "templates" in caption_payload:
+                templates = [
+                    item.strip()
+                    for item in caption_payload["templates"] or []
+                    if item and item.strip()
+                ]
+                stored_caption["templates"] = templates
+            if "prompt" in caption_payload and caption_payload["prompt"] is not None:
+                stored_caption["prompt"] = caption_payload["prompt"].strip()
+            if "model" in caption_payload and caption_payload["model"] is not None:
+                stored_caption["model"] = caption_payload["model"].strip()
+            existing["caption"] = stored_caption
+
+        override_path.parent.mkdir(parents=True, exist_ok=True)
+        with override_path.open("w", encoding="utf-8") as fp:
+            json.dump(existing, fp, ensure_ascii=False, indent=2, sort_keys=True)
+            fp.write("\n")
+
+        await self.scheduler.shutdown()
+        self.reload()
+        await self.scheduler.start()
+        return self.get_settings_snapshot()
+
+
+class AIPipelineUpdate(BaseModel):
+    """AI 流水线可编辑字段。"""
+
+    enable: Optional[bool] = Field(None, description="是否启用流水线")
+    post_slots: Optional[List[str]] = Field(
+        None,
+        description="每日自动发布的时间点，例如 11:00",
+    )
+    image_source: Optional[str] = Field(None, description="图片来源配置")
+    prompt_template: Optional[str] = Field(None, description="图像生成提示词模板")
+    caption_style: Optional[str] = Field(None, description="文案风格标识")
+    openai_api_key: Optional[str] = Field(None, description="OpenAI 密钥覆盖")
+    replicate_model: Optional[str] = None
+    replicate_model_version: Optional[str] = None
+    replicate_token: Optional[str] = None
+    leonardo_model: Optional[str] = None
+    leonardo_token: Optional[str] = None
+    timezone: Optional[str] = Field(None, description="调度使用的时区")
+
+
+class CaptionUpdate(BaseModel):
+    """文案相关可编辑字段。"""
+
+    model: Optional[str] = None
+    prompt: Optional[str] = None
+    templates: Optional[List[str]] = None
+
+
+class SettingsUpdate(BaseModel):
+    """组合请求体，允许同时更新多个板块。"""
+
+    ai_pipeline: Optional[AIPipelineUpdate] = None
+    caption: Optional[CaptionUpdate] = None
 
 
 def create_app(config_path: Path | None = None) -> FastAPI:
@@ -277,6 +401,33 @@ def create_app(config_path: Path | None = None) -> FastAPI:
                 "image_source": ctx.ai_config.image_source,
             },
         }
+
+    @app.get("/settings/ai")
+    async def read_ai_settings(ctx: AppContext = Depends(get_context)) -> Dict[str, Any]:
+        """读取当前 AI 流水线与文案配置。"""
+
+        return ctx.get_settings_snapshot()
+
+    @app.put("/settings/ai")
+    async def update_ai_settings(
+        payload: SettingsUpdate,
+        ctx: AppContext = Depends(get_context),
+    ) -> Dict[str, Any]:
+        """写入配置覆盖文件，避免升级时被覆盖。"""
+
+        if payload.ai_pipeline is None and payload.caption is None:
+            raise HTTPException(status_code=400, detail="请至少提供一项配置内容。")
+
+        ai_payload = payload.ai_pipeline.dict(exclude_none=True) if payload.ai_pipeline else None
+        caption_payload = (
+            payload.caption.dict(exclude_none=True)
+            if payload.caption
+            else None
+        )
+        return await ctx.apply_settings_update(
+            ai_payload=ai_payload,
+            caption_payload=caption_payload,
+        )
 
     @app.get("/posts/history")
     async def post_history(limit: int = 20, ctx: AppContext = Depends(get_context)) -> Dict[str, Any]:

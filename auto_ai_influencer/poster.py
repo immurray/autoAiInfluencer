@@ -163,6 +163,7 @@ class TweetPoster:
         """推断图片的 MIME 类型，确保上传时显式声明，避免服务端识别失败。"""
 
         mime, _ = mimetypes.guess_type(str(image_path))
+        mime = self._normalize_mime_type(mime)
         if mime:
             return mime
 
@@ -174,10 +175,38 @@ class TweetPoster:
 
         if fmt:
             mime_from_pil = Image.MIME.get(fmt)
+            mime_from_pil = self._normalize_mime_type(mime_from_pil)
             if mime_from_pil:
                 return mime_from_pil
 
         raise TweetPostError("无法识别图片的具体 MIME 类型，请检查文件格式是否受支持。")
+
+    @staticmethod
+    def _normalize_mime_type(mime: Optional[str]) -> Optional[str]:
+        """对猜测出的 MIME 类型进行归一化，确保符合 X API 的预期。"""
+
+        if not mime:
+            return None
+
+        normalized = mime.lower()
+        # X 平台允许的媒体 MIME 列表（常见图片类型）。
+        allowed = {"image/png", "image/jpeg", "image/gif"}
+
+        if normalized in allowed:
+            return normalized
+
+        # 针对部分系统可能返回的别名进行归一化。
+        alias_map = {
+            "image/x-png": "image/png",
+            "image/pjpeg": "image/jpeg",
+            "image/jpg": "image/jpeg",
+        }
+
+        mapped = alias_map.get(normalized)
+        if mapped in allowed:
+            return mapped
+
+        return None
 
 
 __all__ = ["TweetPoster", "PostResult", "TweetPostError"]

@@ -50,7 +50,12 @@ class AppContext:
         self._override_path = override_path
         self.database = Database(app_config.database_path)
         self.image_provider = ImageProvider(ai_config, self.database)
-        self.caption_provider = CaptionProvider(ai_config, self.database, raw_config)
+        self.caption_provider = CaptionProvider(
+            ai_config,
+            self.database,
+            raw_config,
+            self._config_path.parent,
+        )
         self.poster = TweetPoster(app_config.twitter, app_config.dry_run)
         self.scheduler = PipelineScheduler(
             config=ai_config,
@@ -91,6 +96,8 @@ class AppContext:
                 "model": caption.get("model", "gpt-4o-mini"),
                 "prompt": caption.get("prompt", ""),
                 "templates": caption.get("templates", []),
+                "prompt_file": caption.get("prompt_file"),
+                "templates_file": caption.get("templates_file"),
             },
         }
 
@@ -133,6 +140,26 @@ class AppContext:
                 stored_caption["prompt"] = caption_payload["prompt"].strip()
             if "model" in caption_payload and caption_payload["model"] is not None:
                 stored_caption["model"] = caption_payload["model"].strip()
+            if "prompt_file" in caption_payload:
+                prompt_file = caption_payload["prompt_file"]
+                if prompt_file is None:
+                    stored_caption.pop("prompt_file", None)
+                else:
+                    value = prompt_file.strip()
+                    if value:
+                        stored_caption["prompt_file"] = value
+                    else:
+                        stored_caption.pop("prompt_file", None)
+            if "templates_file" in caption_payload:
+                templates_file = caption_payload["templates_file"]
+                if templates_file is None:
+                    stored_caption.pop("templates_file", None)
+                else:
+                    value = templates_file.strip()
+                    if value:
+                        stored_caption["templates_file"] = value
+                    else:
+                        stored_caption.pop("templates_file", None)
             existing["caption"] = stored_caption
 
         override_path.parent.mkdir(parents=True, exist_ok=True)
@@ -172,6 +199,8 @@ class CaptionUpdate(BaseModel):
     model: Optional[str] = None
     prompt: Optional[str] = None
     templates: Optional[List[str]] = None
+    prompt_file: Optional[str] = None
+    templates_file: Optional[str] = None
 
 
 class SettingsUpdate(BaseModel):

@@ -126,8 +126,11 @@ class ImageProvider:
             "Authorization": f"Token {self._config.replicate_token}",
             "Content-Type": "application/json",
         }
+        version = self._resolve_replicate_version(headers)
+        if not version:
+            return None
         payload = {
-            "version": self._config.replicate_model,
+            "version": version,
             "input": {"prompt": self._config.prompt_template},
         }
         try:
@@ -139,6 +142,18 @@ class ImageProvider:
             )
             if response.status_code == 401:
                 self._logger.error("Replicate 返回 401 未授权，请确认 API Token 是否有效。")
+                return None
+            if response.status_code == 422:
+                try:
+                    detail = response.json()
+                    message = detail.get("error", {}).get("message") if isinstance(detail, dict) else detail
+                except ValueError:
+                    message = response.text
+                self._logger.error(
+                    "Replicate 返回 422 无法处理请求，通常表示模型版本 ID 不正确。"
+                    "请确认 replicate_model 配置包含版本哈希（例如 owner/model:hash）。错误详情：%s",
+                    message,
+                )
                 return None
             response.raise_for_status()
             data = response.json()
@@ -174,6 +189,42 @@ class ImageProvider:
 
         image_url = output[0] if isinstance(output, list) else output
         return self._download_remote_image(str(image_url), provider="replicate", extra={"status": status})
+
+    def _resolve_replicate_version(self, headers: dict[str, str]) -> Optional[str]:
+        """校验并在必要时补全 Replicate 模型版本。"""
+
+        raw = (self._config.replicate_model or "").strip()
+        if not raw:
+            self._logger.error("未配置 replicate_model，无法调用 Replicate。")
+            return None
+        if ":" in raw:
+            return raw
+        if "/" not in raw:
+            self._logger.error("replicate_model=%s 格式不正确，应为 owner/model 或 owner/model:hash。", raw)
+            return None
+
+        owner, name = raw.split("/", 1)
+        url = f"https://api.replicate.com/v1/models/{owner}/{name}"
+        try:
+            response = requests.get(url, headers=headers, timeout=15)
+            if response.status_code == 401:
+                self._logger.error("Replicate 返回 401 未授权，请确认 API Token 是否有效。")
+                return None
+            response.raise_for_status()
+            data = response.json()
+        except Exception as exc:  # pylint: disable=broad-except
+            self._logger.exception("自动查询 Replicate 模型版本失败：%s", exc)
+            return None
+
+        latest = data.get("latest_version") if isinstance(data, dict) else None
+        version_id = latest.get("id") if isinstance(latest, dict) else None
+        if not version_id:
+            self._logger.error("无法从 Replicate 模型信息中解析最新版本 ID：%s", data)
+            return None
+
+        full_version = f"{owner}/{name}:{version_id}"
+        self._logger.info("replicate_model 未提供版本哈希，已自动补全为：%s", full_version)
+        return full_version
 
     def _generate_with_leonardo(self) -> Optional[ImageResult]:
         if requests is None:

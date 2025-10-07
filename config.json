@@ -27,7 +27,7 @@
     "enable": true,
     "post_slots": ["11:00", "19:00"],
     "image_source": "replicate",
-    "replicate_model": "stability-ai/sdxl",
+    "replicate_model": "stability-ai/stable-diffusion-xl:请替换为版本ID",
     "replicate_token": "",
     "prompt_template": "portrait of a young woman, soft light, film tone",
     "caption_style": "soft_romance",

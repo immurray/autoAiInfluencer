@@ -34,11 +34,90 @@ class AppContext:
     def __init__(self, config_path: Path) -> None:
         self._config_path = config_path
         self._override_path: Optional[Path] = None
+        self._logger = logging.getLogger(__name__)
         self.reload()
 
     @property
     def config_path(self) -> Path:
         return self._config_path
+
+    def _resolve_config_path(self, value: str) -> Path:
+        raw = Path(value)
+        return raw if raw.is_absolute() else (self._config_path.parent / raw).resolve()
+
+    @staticmethod
+    def _clean_template_items(values: List[Any]) -> List[str]:
+        items: List[str] = []
+        for item in values:
+            if item is None:
+                continue
+            text = str(item).strip()
+            if text:
+                items.append(text)
+        return items
+
+    def _resolve_prompt_content(self, caption: Dict[str, Any]) -> str:
+        inline_prompt = str(caption.get("prompt", "") or "").strip()
+        prompt_file = caption.get("prompt_file")
+        if not prompt_file:
+            return inline_prompt
+
+        path = self._resolve_config_path(prompt_file)
+        try:
+            content = path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            self._logger.warning("未找到提示词文件 %s，已回退至内联配置。", path)
+            return inline_prompt
+        except OSError as exc:
+            self._logger.warning("读取提示词文件 %s 失败：%s，已回退至内联配置。", path, exc)
+            return inline_prompt
+
+        stripped = content.strip()
+        if not stripped:
+            self._logger.warning("提示词文件 %s 内容为空，已回退至内联配置。", path)
+            return inline_prompt
+
+        return stripped
+
+    def _resolve_templates(self, caption: Dict[str, Any]) -> List[str]:
+        inline_templates = self._clean_template_items(caption.get("templates", []))
+        templates_file = caption.get("templates_file")
+        if not templates_file:
+            return inline_templates
+
+        path = self._resolve_config_path(templates_file)
+        try:
+            content = path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            self._logger.warning("未找到模板文件 %s，已回退至内联配置。", path)
+            return inline_templates
+        except OSError as exc:
+            self._logger.warning("读取模板文件 %s 失败：%s，已回退至内联配置。", path, exc)
+            return inline_templates
+
+        stripped = content.strip()
+        if not stripped:
+            self._logger.warning("模板文件 %s 内容为空，已回退至内联配置。", path)
+            return inline_templates
+
+        try:
+            parsed = json.loads(stripped)
+        except json.JSONDecodeError:
+            parsed = None
+
+        if isinstance(parsed, list):
+            cleaned = self._clean_template_items(parsed)
+            if cleaned:
+                return cleaned
+            self._logger.warning("模板文件 %s 中的 JSON 列表为空，已回退至内联配置。", path)
+            return inline_templates
+
+        lines = [line.strip() for line in stripped.splitlines() if line.strip()]
+        if lines:
+            return lines
+
+        self._logger.warning("模板文件 %s 内容无法解析，已回退至内联配置。", path)
+        return inline_templates
 
     def reload(self) -> None:
         app_config, ai_config, raw_config, override_path = load_settings(self._config_path)
@@ -90,12 +169,14 @@ class AppContext:
         """返回当前生效的配置，便于接口响应。"""
 
         caption = self.raw_config.get("caption", {})
+        prompt_content = self._resolve_prompt_content(caption)
+        templates_content = self._resolve_templates(caption)
         return {
             "ai_pipeline": self._serialize_ai_config(),
             "caption": {
                 "model": caption.get("model", "gpt-4o-mini"),
-                "prompt": caption.get("prompt", ""),
-                "templates": caption.get("templates", []),
+                "prompt": prompt_content,
+                "templates": templates_content,
                 "prompt_file": caption.get("prompt_file"),
                 "templates_file": caption.get("templates_file"),
             },
@@ -587,10 +668,21 @@ def create_app(config_path: Path | None = None) -> FastAPI:
 
             function fillCaptionForm(settings) {
                 const caption = settings.caption || {};
+                const promptField = captionForm.prompt;
+                const templatesField = captionForm.templates;
                 captionForm.model.value = caption.model || '';
-                captionForm.prompt.value = caption.prompt || '';
+
+                const promptValue = caption.prompt || '';
+                promptField.value = promptValue;
+                promptField.dataset.source = caption.prompt_file ? 'file' : 'inline';
+                promptField.dataset.original = promptValue;
+
                 const templates = Array.isArray(caption.templates) ? caption.templates : [];
-                captionForm.templates.value = templates.join('\n');
+                const templateValue = templates.join('\n');
+                templatesField.value = templateValue;
+                templatesField.dataset.source = caption.templates_file ? 'file' : 'inline';
+                templatesField.dataset.original = templateValue;
+
                 captionForm.prompt_file.value = caption.prompt_file || '';
                 captionForm.templates_file.value = caption.templates_file || '';
             }
@@ -704,26 +796,49 @@ def create_app(config_path: Path | None = None) -> FastAPI:
 
             captionForm.addEventListener('submit', async (event) => {
                 event.preventDefault();
-                const templates = captionForm.templates.value
+                const promptField = captionForm.prompt;
+                const templatesField = captionForm.templates;
+                const templatesRaw = templatesField.value;
+                const templates = templatesRaw
                     .split('\n')
                     .map((item) => item.trim())
                     .filter(Boolean);
-                const payload = {
-                    caption: {
-                        model: captionForm.model.value.trim() || null,
-                        prompt: captionForm.prompt.value,
-                        templates: templates,
-                        prompt_file: captionForm.prompt_file.value.trim(),
-                        templates_file: captionForm.templates_file.value.trim(),
-                    },
+                const captionPayload = {
+                    model: captionForm.model.value.trim() || null,
+                    prompt: promptField.value,
+                    templates: templates,
+                    prompt_file: captionForm.prompt_file.value.trim(),
+                    templates_file: captionForm.templates_file.value.trim(),
                 };
 
-                if (!payload.caption.prompt_file) {
-                    payload.caption.prompt_file = null;
+                if (captionPayload.prompt_file) {
+                    if (
+                        promptField.dataset.source === 'file' &&
+                        promptField.dataset.original !== undefined &&
+                        promptField.value === promptField.dataset.original
+                    ) {
+                        delete captionPayload.prompt;
+                    }
                 }
-                if (!payload.caption.templates_file) {
-                    payload.caption.templates_file = null;
+
+                if (captionPayload.templates_file) {
+                    if (
+                        templatesField.dataset.source === 'file' &&
+                        templatesField.dataset.original !== undefined &&
+                        templatesRaw === templatesField.dataset.original
+                    ) {
+                        delete captionPayload.templates;
+                    }
                 }
+
+                if (!captionPayload.prompt_file) {
+                    captionPayload.prompt_file = null;
+                }
+                if (!captionPayload.templates_file) {
+                    captionPayload.templates_file = null;
+                }
+
+                const payload = { caption: captionPayload };
 
                 try {
                     const resp = await fetch('/settings/ai', {

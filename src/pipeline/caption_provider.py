@@ -14,6 +14,124 @@ import requests
 from ..config import AIPipelineConfig
 from ..database import Database
 
+
+def _clean_template_items(values: Iterable[Any]) -> list[str]:
+    """将任意可迭代对象转换为去空字符串列表。"""
+
+    cleaned: list[str] = []
+    for item in values:
+        if item is None:
+            continue
+        text = str(item).strip()
+        if text:
+            cleaned.append(text)
+    return cleaned
+
+
+class _PromptSource:
+    """负责在运行期动态加载提示词。"""
+
+    def __init__(
+        self,
+        *,
+        inline_prompt: str,
+        prompt_file: Optional[str],
+        base_dir: Path,
+        logger: logging.Logger,
+    ) -> None:
+        self._inline_prompt = inline_prompt.strip() if inline_prompt else ""
+        self._prompt_file = prompt_file.strip() if prompt_file else None
+        self._base_dir = base_dir
+        self._logger = logger
+
+    def load(self) -> str:
+        """返回最新的提示词内容。"""
+
+        if not self._prompt_file:
+            return self._inline_prompt
+
+        path = self._resolve_path(self._prompt_file)
+        try:
+            content = path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            self._logger.warning("未找到提示词文件 %s，回退到内联提示词。", path)
+            return self._inline_prompt
+        except OSError as exc:
+            self._logger.warning("读取提示词文件 %s 失败：%s，回退到内联提示词。", path, exc)
+            return self._inline_prompt
+
+        stripped = content.strip()
+        if not stripped:
+            self._logger.warning("提示词文件 %s 内容为空，回退到内联提示词。", path)
+            return self._inline_prompt
+
+        return stripped
+
+    def _resolve_path(self, value: str) -> Path:
+        raw = Path(value)
+        return raw if raw.is_absolute() else (self._base_dir / raw)
+
+
+class _TemplateSource:
+    """负责在运行期动态加载模板集合。"""
+
+    def __init__(
+        self,
+        *,
+        inline_templates: Iterable[Any],
+        templates_file: Optional[str],
+        base_dir: Path,
+        logger: logging.Logger,
+    ) -> None:
+        self._inline_templates = _clean_template_items(inline_templates)
+        self._templates_file = templates_file.strip() if templates_file else None
+        self._base_dir = base_dir
+        self._logger = logger
+
+    def load(self) -> list[str]:
+        """返回最新的模板列表。"""
+
+        if not self._templates_file:
+            return list(self._inline_templates)
+
+        path = self._resolve_path(self._templates_file)
+        try:
+            content = path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            self._logger.warning("未找到模板文件 %s，回退到内联模板。", path)
+            return list(self._inline_templates)
+        except OSError as exc:
+            self._logger.warning("读取模板文件 %s 失败：%s，回退到内联模板。", path, exc)
+            return list(self._inline_templates)
+
+        stripped = content.strip()
+        if not stripped:
+            self._logger.warning("模板文件 %s 内容为空，回退到内联模板。", path)
+            return list(self._inline_templates)
+
+        try:
+            parsed = json.loads(stripped)
+        except json.JSONDecodeError:
+            parsed = None
+
+        if isinstance(parsed, Iterable) and not isinstance(parsed, (str, bytes)):
+            cleaned = _clean_template_items(parsed)
+            if cleaned:
+                return cleaned
+            self._logger.warning("模板文件 %s 中的 JSON 列表为空，回退到内联模板。", path)
+            return list(self._inline_templates)
+
+        lines = [line.strip() for line in stripped.splitlines() if line.strip()]
+        if lines:
+            return lines
+
+        self._logger.warning("模板文件 %s 内容无法解析，回退到内联模板。", path)
+        return list(self._inline_templates)
+
+    def _resolve_path(self, value: str) -> Path:
+        raw = Path(value)
+        return raw if raw.is_absolute() else (self._base_dir / raw)
+
 try:  # pragma: no cover
     from openai import OpenAI
     from openai import AuthenticationError as OpenAIAuthError
@@ -43,13 +161,27 @@ class CaptionProvider:
         config: AIPipelineConfig,
         database: Database,
         raw_config: dict,
+        config_root: Path | None = None,
     ) -> None:
         self._config = config
         self._database = database
         self._logger = logging.getLogger(__name__)
-        self._templates = raw_config.get("caption", {}).get("templates", [])
-        self._prompt = raw_config.get("caption", {}).get("prompt", "")
-        self._model = raw_config.get("caption", {}).get("model", "gpt-4o-mini")
+        caption_config = raw_config.get("caption", {})
+        base_dir = (config_root or Path.cwd()).resolve()
+
+        self._prompt_source = _PromptSource(
+            inline_prompt=str(caption_config.get("prompt", "")),
+            prompt_file=caption_config.get("prompt_file"),
+            base_dir=base_dir,
+            logger=self._logger,
+        )
+        self._template_source = _TemplateSource(
+            inline_templates=caption_config.get("templates", []),
+            templates_file=caption_config.get("templates_file"),
+            base_dir=base_dir,
+            logger=self._logger,
+        )
+        self._model = caption_config.get("model", "gpt-4o-mini")
         self._log_file = config.caption_log_directory / "captions.log"
         self._log_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -104,8 +236,9 @@ class CaptionProvider:
             f"整体风格为 {style}，需要包含 2-3 个 emoji 与至少 2 个话题标签，"
             "总长度控制在 100 字以内。"
         )
-        if self._prompt:
-            prompt = f"{self._prompt}\n\n{prompt}"
+        prefix = self._prompt_source.load()
+        if prefix:
+            prompt = f"{prefix}\n\n{prompt}"
 
         messages = [
             {"role": "system", "content": "你是一名资深新媒体编辑。"},
@@ -256,8 +389,9 @@ class CaptionProvider:
             f"整体风格为 {style}，需要包含 2-3 个 emoji 与至少 2 个话题标签，"
             "总长度控制在 100 字以内。"
         )
-        if self._prompt:
-            prompt = f"{self._prompt}\n\n{prompt}"
+        prefix = self._prompt_source.load()
+        if prefix:
+            prompt = f"{prefix}\n\n{prompt}"
 
         headers = {
             "Authorization": f"Bearer {self._config.openai_api_key}",
@@ -293,8 +427,9 @@ class CaptionProvider:
         return text
 
     def _generate_from_template(self, image_path: Path, style: str) -> str:
-        if self._templates:
-            template = random.choice(self._templates)
+        templates = self._template_source.load()
+        if templates:
+            template = random.choice(templates)
             caption = template.format(filename=image_path.name, style=style)
         else:
             caption = f"今天的主角是 {image_path.stem}，欢迎在评论区分享你的看法！ #AI #虚拟人"

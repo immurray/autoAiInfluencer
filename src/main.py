@@ -604,295 +604,337 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             <footer>如需更多高级功能，请直接使用顶部的交互式文档。</footer>
 
             <script>
-            const healthOutput = document.querySelector('#health');
-            const historyList = document.querySelector('#history-list');
-            const captionConfig = document.querySelector('#caption-config');
-            const aiForm = document.querySelector('#ai-form');
-            const captionForm = document.querySelector('#caption-form');
-            const loadSettingsButton = document.querySelector('#load-settings-form');
-            const refreshHealthQuick = document.querySelector('#refresh-health-quick');
+            (function () {
+                var healthOutput = document.querySelector('#health');
+                var historyList = document.querySelector('#history-list');
+                var captionConfig = document.querySelector('#caption-config');
+                var aiForm = document.querySelector('#ai-form');
+                var captionForm = document.querySelector('#caption-form');
+                var loadSettingsButton = document.querySelector('#load-settings-form');
+                var refreshHealthQuick = document.querySelector('#refresh-health-quick');
 
-            function escapeHtml(value) {
-                if (value === null || value === undefined) {
-                    return '';
-                }
-                return String(value).replace(/[&<>"']/g, (ch) => ({
-                    '&': '&amp;',
-                    '<': '&lt;',
-                    '>': '&gt;',
-                    '"': '&quot;',
-                    "'": '&#39;',
-                })[ch] || ch);
-            }
-
-            function showToast(message, type = 'info') {
-                const toast = document.createElement('div');
-                toast.textContent = message;
-                toast.style.position = 'fixed';
-                toast.style.right = '1.5rem';
-                toast.style.bottom = '1.5rem';
-                toast.style.padding = '0.75rem 1.2rem';
-                toast.style.borderRadius = '999px';
-                toast.style.fontWeight = '600';
-                toast.style.background = type === 'error' ? '#ef4444' : '#10b981';
-                toast.style.color = '#fff';
-                toast.style.boxShadow = '0 18px 38px rgba(15, 23, 42, 0.18)';
-                toast.style.zIndex = '9999';
-                document.body.appendChild(toast);
-                setTimeout(() => toast.remove(), 2600);
-            }
-
-            async function fetchSettings() {
-                const resp = await fetch('/settings/ai');
-                if (!resp.ok) {
-                    throw new Error('获取配置失败');
-                }
-                return await resp.json();
-            }
-
-            function fillAiForm(settings) {
-                const ai = settings.ai_pipeline || {};
-                aiForm.enable.checked = Boolean(ai.enable);
-                aiForm.post_slots.value = Array.isArray(ai.post_slots) ? ai.post_slots.join(',') : '';
-                aiForm.image_source.value = ai.image_source || '';
-                aiForm.prompt_template.value = ai.prompt_template || '';
-                aiForm.caption_style.value = ai.caption_style || '';
-                aiForm.openai_api_key.value = ai.openai_api_key || '';
-                aiForm.replicate_model.value = ai.replicate_model || '';
-                aiForm.replicate_model_version.value = ai.replicate_model_version || '';
-                aiForm.replicate_token.value = ai.replicate_token || '';
-                aiForm.leonardo_model.value = ai.leonardo_model || '';
-                aiForm.leonardo_token.value = ai.leonardo_token || '';
-                aiForm.timezone.value = ai.timezone || '';
-            }
-
-            function fillCaptionForm(settings) {
-                const caption = settings.caption || {};
-                const promptField = captionForm.prompt;
-                const templatesField = captionForm.templates;
-                captionForm.model.value = caption.model || '';
-
-                const promptValue = caption.prompt || '';
-                promptField.value = promptValue;
-                promptField.dataset.source = caption.prompt_file ? 'file' : 'inline';
-                promptField.dataset.original = promptValue;
-
-                const templates = Array.isArray(caption.templates) ? caption.templates : [];
-                const templateValue = templates.join('\n');
-                templatesField.value = templateValue;
-                templatesField.dataset.source = caption.templates_file ? 'file' : 'inline';
-                templatesField.dataset.original = templateValue;
-
-                captionForm.prompt_file.value = caption.prompt_file || '';
-                captionForm.templates_file.value = caption.templates_file || '';
-            }
-
-            async function syncForms(showToastMessage = true) {
-                try {
-                    const data = await fetchSettings();
-                    fillAiForm(data);
-                    fillCaptionForm(data);
-                    if (showToastMessage) {
-                        showToast('配置已加载并同步到表单');
+                function escapeHtml(value) {
+                    if (value === null || value === undefined) {
+                        return '';
                     }
-                    return data;
-                } catch (error) {
-                    showToast('加载配置失败：' + error, 'error');
-                    throw error;
+                    var map = {
+                        '&': '&amp;',
+                        '<': '&lt;',
+                        '>': '&gt;',
+                        '"': '&quot;',
+                        "'": '&#39;'
+                    };
+                    return String(value).replace(/[&<>"']/g, function (ch) {
+                        return map[ch] || ch;
+                    });
                 }
-            }
 
-            document.querySelector('#refresh-health').addEventListener('click', async () => {
-                healthOutput.textContent = '正在加载...';
-                try {
-                    const resp = await fetch('/health');
-                    const data = await resp.json();
-                    healthOutput.textContent = JSON.stringify(data, null, 2);
-                } catch (error) {
-                    healthOutput.textContent = '加载失败：' + error;
-                }
-            });
-
-            refreshHealthQuick.addEventListener('click', async () => {
-                document.querySelector('#refresh-health').click();
-                await syncForms(false);
-            });
-
-            loadSettingsButton.addEventListener('click', () => {
-                syncForms();
-            });
-
-            document.querySelector('#load-caption-config').addEventListener('click', async () => {
-                captionConfig.innerHTML = '<p>正在读取配置...</p>';
-                try {
-                    const data = await syncForms(false);
-                    const caption = data.caption || {};
-                    const templates = Array.isArray(caption.templates) ? caption.templates : [];
-
-                    const templateList = templates.length
-                        ? `<ol>${templates.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ol>`
-                        : '<p>当前未设置模板。</p>';
-
-                    captionConfig.innerHTML = `
-                        <p><strong>模型：</strong> ${escapeHtml(caption.model || '未配置')}</p>
-                        <p><strong>提示词：</strong></p>
-                        <pre>${escapeHtml(caption.prompt || '未配置提示词')}</pre>
-                        <p><strong>模板列表：</strong></p>
-                        ${templateList}
-                    `;
-                } catch (error) {
-                    captionConfig.innerHTML = `<p>读取失败：${error}</p>`;
-                }
-            });
-
-            aiForm.addEventListener('submit', async (event) => {
-                event.preventDefault();
-                const slots = aiForm.post_slots.value
-                    .split(',')
-                    .map((item) => item.trim())
-                    .filter(Boolean);
-                const payload = {
-                    ai_pipeline: {
-                        enable: aiForm.enable.checked,
-                        post_slots: slots,
-                        image_source: aiForm.image_source.value.trim() || null,
-                        prompt_template: aiForm.prompt_template.value,
-                        caption_style: aiForm.caption_style.value.trim() || null,
-                        openai_api_key: aiForm.openai_api_key.value,
-                        replicate_model: aiForm.replicate_model.value.trim() || null,
-                        replicate_model_version: aiForm.replicate_model_version.value.trim() || null,
-                        replicate_token: aiForm.replicate_token.value,
-                        leonardo_model: aiForm.leonardo_model.value.trim() || null,
-                        leonardo_token: aiForm.leonardo_token.value,
-                        timezone: aiForm.timezone.value.trim() || null,
-                    },
-                };
-
-                Object.keys(payload.ai_pipeline).forEach((key) => {
-                    if (payload.ai_pipeline[key] === null) {
-                        delete payload.ai_pipeline[key];
+                function showToast(message, type) {
+                    if (type === undefined) {
+                        type = 'info';
                     }
+                    var toast = document.createElement('div');
+                    toast.textContent = message;
+                    toast.style.position = 'fixed';
+                    toast.style.right = '1.5rem';
+                    toast.style.bottom = '1.5rem';
+                    toast.style.padding = '0.75rem 1.2rem';
+                    toast.style.borderRadius = '999px';
+                    toast.style.fontWeight = '600';
+                    toast.style.background = type === 'error' ? '#ef4444' : '#10b981';
+                    toast.style.color = '#fff';
+                    toast.style.boxShadow = '0 18px 38px rgba(15, 23, 42, 0.18)';
+                    toast.style.zIndex = '9999';
+                    document.body.appendChild(toast);
+                    setTimeout(function () {
+                        toast.remove();
+                    }, 2600);
+                }
+
+                function fetchSettings() {
+                    return fetch('/settings/ai').then(function (resp) {
+                        if (!resp.ok) {
+                            throw new Error('获取配置失败');
+                        }
+                        return resp.json();
+                    });
+                }
+
+                function fillAiForm(settings) {
+                    var ai = settings.ai_pipeline || {};
+                    aiForm.enable.checked = Boolean(ai.enable);
+                    aiForm.post_slots.value = Array.isArray(ai.post_slots) ? ai.post_slots.join(',') : '';
+                    aiForm.image_source.value = ai.image_source || '';
+                    aiForm.prompt_template.value = ai.prompt_template || '';
+                    aiForm.caption_style.value = ai.caption_style || '';
+                    aiForm.openai_api_key.value = ai.openai_api_key || '';
+                    aiForm.replicate_model.value = ai.replicate_model || '';
+                    aiForm.replicate_model_version.value = ai.replicate_model_version || '';
+                    aiForm.replicate_token.value = ai.replicate_token || '';
+                    aiForm.leonardo_model.value = ai.leonardo_model || '';
+                    aiForm.leonardo_token.value = ai.leonardo_token || '';
+                    aiForm.timezone.value = ai.timezone || '';
+                }
+
+                function fillCaptionForm(settings) {
+                    var caption = settings.caption || {};
+                    var promptField = captionForm.prompt;
+                    var templatesField = captionForm.templates;
+                    captionForm.model.value = caption.model || '';
+
+                    var promptValue = caption.prompt || '';
+                    promptField.value = promptValue;
+                    promptField.dataset.source = caption.prompt_file ? 'file' : 'inline';
+                    promptField.dataset.original = promptValue;
+
+                    var templates = Array.isArray(caption.templates) ? caption.templates : [];
+                    var templateValue = templates.join('\n');
+                    templatesField.value = templateValue;
+                    templatesField.dataset.source = caption.templates_file ? 'file' : 'inline';
+                    templatesField.dataset.original = templateValue;
+
+                    captionForm.prompt_file.value = caption.prompt_file || '';
+                    captionForm.templates_file.value = caption.templates_file || '';
+                }
+
+                function syncForms(showToastMessage) {
+                    if (showToastMessage === undefined) {
+                        showToastMessage = true;
+                    }
+                    return fetchSettings()
+                        .then(function (data) {
+                            fillAiForm(data);
+                            fillCaptionForm(data);
+                            if (showToastMessage) {
+                                showToast('配置已加载并同步到表单');
+                            }
+                            return data;
+                        })
+                        .catch(function (error) {
+                            showToast('加载配置失败：' + error, 'error');
+                            throw error;
+                        });
+                }
+
+                document.querySelector('#refresh-health').addEventListener('click', function () {
+                    healthOutput.textContent = '正在加载...';
+                    fetch('/health')
+                        .then(function (resp) {
+                            return resp.json();
+                        })
+                        .then(function (data) {
+                            healthOutput.textContent = JSON.stringify(data, null, 2);
+                        })
+                        .catch(function (error) {
+                            healthOutput.textContent = '加载失败：' + error;
+                        });
                 });
 
-                try {
-                    const resp = await fetch('/settings/ai', {
+                refreshHealthQuick.addEventListener('click', function () {
+                    document.querySelector('#refresh-health').click();
+                    syncForms(false);
+                });
+
+                loadSettingsButton.addEventListener('click', function () {
+                    syncForms();
+                });
+
+                document.querySelector('#load-caption-config').addEventListener('click', function () {
+                    captionConfig.innerHTML = '<p>正在读取配置...</p>';
+                    syncForms(false)
+                        .then(function (data) {
+                            var caption = data.caption || {};
+                            var templates = Array.isArray(caption.templates) ? caption.templates : [];
+
+                            var templateList = templates.length
+                                ? '<ol>' + templates.map(function (item) {
+                                    return '<li>' + escapeHtml(item) + '</li>';
+                                }).join('') + '</ol>'
+                                : '<p>当前未设置模板。</p>';
+
+                            captionConfig.innerHTML =
+                                '<p><strong>模型：</strong> ' + escapeHtml(caption.model || '未配置') + '</p>' +
+                                '<p><strong>提示词：</strong></p>' +
+                                '<pre>' + escapeHtml(caption.prompt || '未配置提示词') + '</pre>' +
+                                '<p><strong>模板列表：</strong></p>' +
+                                templateList;
+                        })
+                        .catch(function (error) {
+                            captionConfig.innerHTML = '<p>读取失败：' + error + '</p>';
+                        });
+                });
+
+                aiForm.addEventListener('submit', function (event) {
+                    event.preventDefault();
+                    var slots = aiForm.post_slots.value
+                        .split(',')
+                        .map(function (item) {
+                            return item.trim();
+                        })
+                        .filter(Boolean);
+                    var payload = {
+                        ai_pipeline: {
+                            enable: aiForm.enable.checked,
+                            post_slots: slots,
+                            image_source: aiForm.image_source.value.trim() || null,
+                            prompt_template: aiForm.prompt_template.value,
+                            caption_style: aiForm.caption_style.value.trim() || null,
+                            openai_api_key: aiForm.openai_api_key.value,
+                            replicate_model: aiForm.replicate_model.value.trim() || null,
+                            replicate_model_version: aiForm.replicate_model_version.value.trim() || null,
+                            replicate_token: aiForm.replicate_token.value,
+                            leonardo_model: aiForm.leonardo_model.value.trim() || null,
+                            leonardo_token: aiForm.leonardo_token.value,
+                            timezone: aiForm.timezone.value.trim() || null
+                        }
+                    };
+
+                    Object.keys(payload.ai_pipeline).forEach(function (key) {
+                        if (payload.ai_pipeline[key] === null) {
+                            delete payload.ai_pipeline[key];
+                        }
+                    });
+
+                    fetch('/settings/ai', {
                         method: 'PUT',
                         headers: {
-                            'Content-Type': 'application/json',
+                            'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify(payload),
-                    });
-                    if (!resp.ok) {
-                        const error = await resp.json().catch(() => ({}));
-                        throw new Error(error.detail || resp.statusText);
+                        body: JSON.stringify(payload)
+                    })
+                        .then(function (resp) {
+                            if (!resp.ok) {
+                                return resp.json().catch(function () {
+                                    return {};
+                                }).then(function (error) {
+                                    throw new Error(error.detail || resp.statusText);
+                                });
+                            }
+                            return resp.json();
+                        })
+                        .then(function (data) {
+                            fillAiForm(data);
+                            showToast('流水线配置已保存');
+                        })
+                        .catch(function (error) {
+                            showToast('保存失败：' + error, 'error');
+                        });
+                });
+
+                captionForm.addEventListener('submit', function (event) {
+                    event.preventDefault();
+                    var promptField = captionForm.prompt;
+                    var templatesField = captionForm.templates;
+                    var templatesRaw = templatesField.value;
+                    var templates = templatesRaw
+                        .split('\n')
+                        .map(function (item) {
+                            return item.trim();
+                        })
+                        .filter(Boolean);
+                    var captionPayload = {
+                        model: captionForm.model.value.trim() || null,
+                        prompt: promptField.value,
+                        templates: templates,
+                        prompt_file: captionForm.prompt_file.value.trim(),
+                        templates_file: captionForm.templates_file.value.trim()
+                    };
+
+                    if (captionPayload.prompt_file) {
+                        if (
+                            promptField.dataset.source === 'file' &&
+                            promptField.dataset.original !== undefined &&
+                            promptField.value === promptField.dataset.original
+                        ) {
+                            delete captionPayload.prompt;
+                        }
                     }
-                    const data = await resp.json();
-                    fillAiForm(data);
-                    showToast('流水线配置已保存');
-                } catch (error) {
-                    showToast('保存失败：' + error, 'error');
-                }
-            });
 
-            captionForm.addEventListener('submit', async (event) => {
-                event.preventDefault();
-                const promptField = captionForm.prompt;
-                const templatesField = captionForm.templates;
-                const templatesRaw = templatesField.value;
-                const templates = templatesRaw
-                    .split('\n')
-                    .map((item) => item.trim())
-                    .filter(Boolean);
-                const captionPayload = {
-                    model: captionForm.model.value.trim() || null,
-                    prompt: promptField.value,
-                    templates: templates,
-                    prompt_file: captionForm.prompt_file.value.trim(),
-                    templates_file: captionForm.templates_file.value.trim(),
-                };
-
-                if (captionPayload.prompt_file) {
-                    if (
-                        promptField.dataset.source === 'file' &&
-                        promptField.dataset.original !== undefined &&
-                        promptField.value === promptField.dataset.original
-                    ) {
-                        delete captionPayload.prompt;
+                    if (captionPayload.templates_file) {
+                        if (
+                            templatesField.dataset.source === 'file' &&
+                            templatesField.dataset.original !== undefined &&
+                            templatesRaw === templatesField.dataset.original
+                        ) {
+                            delete captionPayload.templates;
+                        }
                     }
-                }
 
-                if (captionPayload.templates_file) {
-                    if (
-                        templatesField.dataset.source === 'file' &&
-                        templatesField.dataset.original !== undefined &&
-                        templatesRaw === templatesField.dataset.original
-                    ) {
-                        delete captionPayload.templates;
+                    if (!captionPayload.prompt_file) {
+                        captionPayload.prompt_file = null;
                     }
-                }
+                    if (!captionPayload.templates_file) {
+                        captionPayload.templates_file = null;
+                    }
 
-                if (!captionPayload.prompt_file) {
-                    captionPayload.prompt_file = null;
-                }
-                if (!captionPayload.templates_file) {
-                    captionPayload.templates_file = null;
-                }
+                    var payload = { caption: captionPayload };
 
-                const payload = { caption: captionPayload };
-
-                try {
-                    const resp = await fetch('/settings/ai', {
+                    fetch('/settings/ai', {
                         method: 'PUT',
                         headers: {
-                            'Content-Type': 'application/json',
+                            'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify(payload),
-                    });
-                    if (!resp.ok) {
-                        const error = await resp.json().catch(() => ({}));
-                        throw new Error(error.detail || resp.statusText);
-                    }
-                    const data = await resp.json();
-                    fillCaptionForm(data);
-                    showToast('文案配置已保存');
-                } catch (error) {
-                    showToast('保存失败：' + error, 'error');
-                }
-            });
+                        body: JSON.stringify(payload)
+                    })
+                        .then(function (resp) {
+                            if (!resp.ok) {
+                                return resp.json().catch(function () {
+                                    return {};
+                                }).then(function (error) {
+                                    throw new Error(error.detail || resp.statusText);
+                                });
+                            }
+                            return resp.json();
+                        })
+                        .then(function (data) {
+                            fillCaptionForm(data);
+                            showToast('文案配置已保存');
+                        })
+                        .catch(function (error) {
+                            showToast('保存失败：' + error, 'error');
+                        });
+                });
 
-            document.querySelector('#trigger-run').addEventListener('click', async () => {
-                try {
-                    const resp = await fetch('/pipeline/run', { method: 'POST' });
-                    const data = await resp.json();
-                    showToast(data.message || '流水线任务已提交');
-                    if (data.note) {
-                        showToast(data.note, 'error');
-                    }
-                } catch (error) {
-                    showToast('触发失败：' + error, 'error');
-                }
-            });
+                document.querySelector('#trigger-run').addEventListener('click', function () {
+                    fetch('/pipeline/run', { method: 'POST' })
+                        .then(function (resp) {
+                            return resp.json();
+                        })
+                        .then(function (data) {
+                            showToast(data.message || '流水线任务已提交');
+                            if (data.note) {
+                                showToast(data.note, 'error');
+                            }
+                        })
+                        .catch(function (error) {
+                            showToast('触发失败：' + error, 'error');
+                        });
+                });
 
-            document.querySelector('#load-history').addEventListener('click', async () => {
-                historyList.innerHTML = '<li>正在读取...</li>';
-                try {
-                    const resp = await fetch('/posts/history?limit=10');
-                    const data = await resp.json();
-                    if (!data.items || data.items.length === 0) {
-                        historyList.innerHTML = '<li>暂无记录。</li>';
-                        return;
-                    }
-                    historyList.innerHTML = data.items.map(item => {
-                        const createdAt = item.created_at || item.createdAt || item.created || '未知时间';
-                        const caption = item.caption || '（无文案）';
-                        return `<li><strong>${createdAt}</strong> - ${caption}</li>`;
-                    }).join('');
-                } catch (error) {
-                    historyList.innerHTML = `<li>读取失败：${error}</li>`;
-                }
-            });
+                document.querySelector('#load-history').addEventListener('click', function () {
+                    historyList.innerHTML = '<li>正在读取...</li>';
+                    fetch('/posts/history?limit=10')
+                        .then(function (resp) {
+                            return resp.json();
+                        })
+                        .then(function (data) {
+                            if (!data.items || data.items.length === 0) {
+                                historyList.innerHTML = '<li>暂无记录。</li>';
+                                return;
+                            }
+                            historyList.innerHTML = data.items.map(function (item) {
+                                var createdAt = item.created_at || item.createdAt || item.created || '未知时间';
+                                var caption = item.caption || '（无文案）';
+                                return '<li><strong>' + createdAt + '</strong> - ' + caption + '</li>';
+                            }).join('');
+                        })
+                        .catch(function (error) {
+                            historyList.innerHTML = '<li>读取失败：' + error + '</li>';
+                        });
+                });
 
-            syncForms(false).catch(() => {});
+                syncForms(false).catch(function () {});
+            })();
             </script>
         </body>
         </html>

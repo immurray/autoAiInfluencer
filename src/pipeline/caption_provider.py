@@ -284,7 +284,10 @@ class CaptionProvider:
         choices = data.get("choices", [])
         if not choices:
             raise ValueError("OpenAI HTTP 返回内容为空")
-        text = (choices[0].get("message", {}).get("content", "")).strip()
+
+        # OpenAI 新版接口会返回 content 列表，因此需要做统一的文本提取
+        content = choices[0].get("message", {}).get("content")
+        text = self._normalize_openai_content(content)
         if not text:
             raise ValueError("OpenAI HTTP 返回文本为空")
         return text

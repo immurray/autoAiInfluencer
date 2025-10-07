@@ -199,6 +199,11 @@ class ImageProvider:
             return None
         if ":" in raw:
             return raw
+        version_hint = (self._config.replicate_model_version or "").strip()
+        if version_hint:
+            full_version = f"{raw}:{version_hint}"
+            self._logger.info("使用配置中的 replicate_model_version，拼接得到：%s", full_version)
+            return full_version
         if "/" not in raw:
             self._logger.error("replicate_model=%s 格式不正确，应为 owner/model 或 owner/model:hash。", raw)
             return None
@@ -209,6 +214,14 @@ class ImageProvider:
             response = requests.get(url, headers=headers, timeout=15)
             if response.status_code == 401:
                 self._logger.error("Replicate 返回 401 未授权，请确认 API Token 是否有效。")
+                return None
+            if response.status_code == 404:
+                self._logger.error(
+                    "无法访问 Replicate 模型 %s/%s，通常表示该模型不再可用或账号无权限。"
+                    "请在 Replicate 控制台确认模型可用性，必要时在配置中填写 replicate_model_version。",
+                    owner,
+                    name,
+                )
                 return None
             response.raise_for_status()
             data = response.json()

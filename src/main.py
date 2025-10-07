@@ -289,6 +289,76 @@ def create_app(config_path: Path | None = None) -> FastAPI:
                     margin-top: 1.8rem;
                     box-shadow: 0 18px 38px rgba(15, 23, 42, 0.08);
                 }
+                .form-actions {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 0.75rem;
+                    margin-bottom: 1.2rem;
+                }
+                .form-grid {
+                    display: grid;
+                    gap: 1.5rem;
+                    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+                }
+                form {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 0.9rem;
+                    background: rgba(248, 250, 252, 0.85);
+                    border-radius: 16px;
+                    padding: 1.25rem;
+                    box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.35);
+                }
+                form h3 {
+                    margin: 0;
+                }
+                label {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 0.4rem;
+                    font-size: 0.95rem;
+                }
+                label span {
+                    color: #334155;
+                    font-weight: 600;
+                }
+                input[type="text"],
+                input[type="password"],
+                textarea {
+                    border: 1px solid rgba(148, 163, 184, 0.6);
+                    border-radius: 12px;
+                    padding: 0.55rem 0.75rem;
+                    font: inherit;
+                    background: rgba(255, 255, 255, 0.92);
+                    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+                }
+                input[type="text"]:focus,
+                input[type="password"]:focus,
+                textarea:focus {
+                    outline: none;
+                    border-color: #2563eb;
+                    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+                }
+                textarea {
+                    resize: vertical;
+                    min-height: 110px;
+                }
+                details {
+                    background: rgba(37, 99, 235, 0.06);
+                    border-radius: 12px;
+                    padding: 0.75rem 0.95rem;
+                }
+                details summary {
+                    cursor: pointer;
+                    font-weight: 600;
+                    color: #2563eb;
+                    margin-bottom: 0.6rem;
+                }
+                .hint {
+                    margin: 0;
+                    font-size: 0.85rem;
+                    color: #64748b;
+                }
                 pre {
                     background: rgba(15, 23, 42, 0.85);
                     color: #f8fafc;
@@ -336,9 +406,105 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             </section>
 
             <section>
-                <h2>文案提示词配置</h2>
+                <h2>AI 流水线配置</h2>
+                <p>通过下方表单即可在线修改配置内容，提交后会写入覆盖文件并自动重新加载。</p>
+                <div class=\"form-actions\">
+                    <button id=\"load-settings-form\" type=\"button\">加载当前配置到表单</button>
+                    <button id=\"refresh-health-quick\" type=\"button\">刷新状态并同步表单</button>
+                </div>
+                <div class=\"form-grid\">
+                    <form id=\"ai-form\" autocomplete=\"off\">
+                        <h3>流水线参数</h3>
+                        <label>
+                            <span>是否启用自动发帖</span>
+                            <input type=\"checkbox\" name=\"enable\" />
+                        </label>
+                        <label>
+                            <span>每日发帖时段（逗号分隔，例如 11:00,19:00）</span>
+                            <input type=\"text\" name=\"post_slots\" placeholder=\"11:00,19:00\" />
+                        </label>
+                        <label>
+                            <span>图片来源（replicate / leonardo / local）</span>
+                            <input type=\"text\" name=\"image_source\" placeholder=\"replicate\" />
+                        </label>
+                        <label>
+                            <span>图像提示词模板</span>
+                            <textarea name=\"prompt_template\" rows=\"3\" placeholder=\"portrait of ...\"></textarea>
+                        </label>
+                        <label>
+                            <span>文案风格标识</span>
+                            <input type=\"text\" name=\"caption_style\" placeholder=\"soft_romance\" />
+                        </label>
+                        <label>
+                            <span>OpenAI API Key（会写入覆盖文件）</span>
+                            <input type=\"password\" name=\"openai_api_key\" autocomplete=\"new-password\" />
+                        </label>
+                        <details>
+                            <summary>高级参数（可选）</summary>
+                            <label>
+                                <span>Replicate 模型</span>
+                                <input type=\"text\" name=\"replicate_model\" placeholder=\"google/imagen-4\" />
+                            </label>
+                            <label>
+                                <span>Replicate 模型版本</span>
+                                <input type=\"text\" name=\"replicate_model_version\" />
+                            </label>
+                            <label>
+                                <span>Replicate Token</span>
+                                <input type=\"password\" name=\"replicate_token\" autocomplete=\"new-password\" />
+                            </label>
+                            <label>
+                                <span>Leonardo 模型</span>
+                                <input type=\"text\" name=\"leonardo_model\" />
+                            </label>
+                            <label>
+                                <span>Leonardo Token</span>
+                                <input type=\"password\" name=\"leonardo_token\" autocomplete=\"new-password\" />
+                            </label>
+                            <label>
+                                <span>流水线时区（例如 Asia/Shanghai）</span>
+                                <input type=\"text\" name=\"timezone\" />
+                            </label>
+                        </details>
+                        <button type=\"submit\">保存流水线配置</button>
+                        <p class=\"hint\">提交后会触发服务自动重载，请耐心等待提示。</p>
+                    </form>
+
+                    <form id=\"caption-form\" autocomplete=\"off\">
+                        <h3>文案提示词</h3>
+                        <label>
+                            <span>使用的模型</span>
+                            <input type=\"text\" name=\"model\" placeholder=\"gpt-4o-mini\" />
+                        </label>
+                        <label>
+                            <span>提示词正文</span>
+                            <textarea name=\"prompt\" rows=\"6\" placeholder=\"请输入提示词内容\"></textarea>
+                        </label>
+                        <label>
+                            <span>模板列表（每行一个模板，可使用 {filename} 占位符）</span>
+                            <textarea name=\"templates\" rows=\"6\"></textarea>
+                        </label>
+                        <details>
+                            <summary>可选：指定外部文件</summary>
+                            <label>
+                                <span>提示词文件路径（留空代表移除）</span>
+                                <input type=\"text\" name=\"prompt_file\" placeholder=\"data/caption_prompt.txt\" />
+                            </label>
+                            <label>
+                                <span>模板文件路径（留空代表移除）</span>
+                                <input type=\"text\" name=\"templates_file\" placeholder=\"data/caption_templates.txt\" />
+                            </label>
+                        </details>
+                        <button type=\"submit\">保存文案配置</button>
+                        <p class=\"hint\">若只想清空外部文件，可直接留空并保存。</p>
+                    </form>
+                </div>
+            </section>
+
+            <section>
+                <h2>文案提示词预览</h2>
                 <p>点击下方按钮即可查看当前的提示词与模板，便于在更新配置前了解现状。</p>
-                <button id=\"load-caption-config\">加载文案配置</button>
+                <button id=\"load-caption-config\">重新加载文案配置</button>
                 <div id=\"caption-config\">
                     <p>尚未加载配置。</p>
                 </div>
@@ -360,6 +526,10 @@ def create_app(config_path: Path | None = None) -> FastAPI:
             const healthOutput = document.querySelector('#health');
             const historyList = document.querySelector('#history-list');
             const captionConfig = document.querySelector('#caption-config');
+            const aiForm = document.querySelector('#ai-form');
+            const captionForm = document.querySelector('#caption-form');
+            const loadSettingsButton = document.querySelector('#load-settings-form');
+            const refreshHealthQuick = document.querySelector('#refresh-health-quick');
 
             function escapeHtml(value) {
                 if (value === null || value === undefined) {
@@ -391,6 +561,55 @@ def create_app(config_path: Path | None = None) -> FastAPI:
                 setTimeout(() => toast.remove(), 2600);
             }
 
+            async function fetchSettings() {
+                const resp = await fetch('/settings/ai');
+                if (!resp.ok) {
+                    throw new Error('获取配置失败');
+                }
+                return await resp.json();
+            }
+
+            function fillAiForm(settings) {
+                const ai = settings.ai_pipeline || {};
+                aiForm.enable.checked = Boolean(ai.enable);
+                aiForm.post_slots.value = Array.isArray(ai.post_slots) ? ai.post_slots.join(',') : '';
+                aiForm.image_source.value = ai.image_source || '';
+                aiForm.prompt_template.value = ai.prompt_template || '';
+                aiForm.caption_style.value = ai.caption_style || '';
+                aiForm.openai_api_key.value = ai.openai_api_key || '';
+                aiForm.replicate_model.value = ai.replicate_model || '';
+                aiForm.replicate_model_version.value = ai.replicate_model_version || '';
+                aiForm.replicate_token.value = ai.replicate_token || '';
+                aiForm.leonardo_model.value = ai.leonardo_model || '';
+                aiForm.leonardo_token.value = ai.leonardo_token || '';
+                aiForm.timezone.value = ai.timezone || '';
+            }
+
+            function fillCaptionForm(settings) {
+                const caption = settings.caption || {};
+                captionForm.model.value = caption.model || '';
+                captionForm.prompt.value = caption.prompt || '';
+                const templates = Array.isArray(caption.templates) ? caption.templates : [];
+                captionForm.templates.value = templates.join('\n');
+                captionForm.prompt_file.value = caption.prompt_file || '';
+                captionForm.templates_file.value = caption.templates_file || '';
+            }
+
+            async function syncForms(showToastMessage = true) {
+                try {
+                    const data = await fetchSettings();
+                    fillAiForm(data);
+                    fillCaptionForm(data);
+                    if (showToastMessage) {
+                        showToast('配置已加载并同步到表单');
+                    }
+                    return data;
+                } catch (error) {
+                    showToast('加载配置失败：' + error, 'error');
+                    throw error;
+                }
+            }
+
             document.querySelector('#refresh-health').addEventListener('click', async () => {
                 healthOutput.textContent = '正在加载...';
                 try {
@@ -402,11 +621,19 @@ def create_app(config_path: Path | None = None) -> FastAPI:
                 }
             });
 
+            refreshHealthQuick.addEventListener('click', async () => {
+                document.querySelector('#refresh-health').click();
+                await syncForms(false);
+            });
+
+            loadSettingsButton.addEventListener('click', () => {
+                syncForms();
+            });
+
             document.querySelector('#load-caption-config').addEventListener('click', async () => {
                 captionConfig.innerHTML = '<p>正在读取配置...</p>';
                 try {
-                    const resp = await fetch('/settings/ai');
-                    const data = await resp.json();
+                    const data = await syncForms(false);
                     const caption = data.caption || {};
                     const templates = Array.isArray(caption.templates) ? caption.templates : [];
 
@@ -423,6 +650,98 @@ def create_app(config_path: Path | None = None) -> FastAPI:
                     `;
                 } catch (error) {
                     captionConfig.innerHTML = `<p>读取失败：${error}</p>`;
+                }
+            });
+
+            aiForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                const slots = aiForm.post_slots.value
+                    .split(',')
+                    .map((item) => item.trim())
+                    .filter(Boolean);
+                const payload = {
+                    ai_pipeline: {
+                        enable: aiForm.enable.checked,
+                        post_slots: slots,
+                        image_source: aiForm.image_source.value.trim() || null,
+                        prompt_template: aiForm.prompt_template.value,
+                        caption_style: aiForm.caption_style.value.trim() || null,
+                        openai_api_key: aiForm.openai_api_key.value,
+                        replicate_model: aiForm.replicate_model.value.trim() || null,
+                        replicate_model_version: aiForm.replicate_model_version.value.trim() || null,
+                        replicate_token: aiForm.replicate_token.value,
+                        leonardo_model: aiForm.leonardo_model.value.trim() || null,
+                        leonardo_token: aiForm.leonardo_token.value,
+                        timezone: aiForm.timezone.value.trim() || null,
+                    },
+                };
+
+                Object.keys(payload.ai_pipeline).forEach((key) => {
+                    if (payload.ai_pipeline[key] === null) {
+                        delete payload.ai_pipeline[key];
+                    }
+                });
+
+                try {
+                    const resp = await fetch('/settings/ai', {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(payload),
+                    });
+                    if (!resp.ok) {
+                        const error = await resp.json().catch(() => ({}));
+                        throw new Error(error.detail || resp.statusText);
+                    }
+                    const data = await resp.json();
+                    fillAiForm(data);
+                    showToast('流水线配置已保存');
+                } catch (error) {
+                    showToast('保存失败：' + error, 'error');
+                }
+            });
+
+            captionForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                const templates = captionForm.templates.value
+                    .split('\n')
+                    .map((item) => item.trim())
+                    .filter(Boolean);
+                const payload = {
+                    caption: {
+                        model: captionForm.model.value.trim() || null,
+                        prompt: captionForm.prompt.value,
+                        templates: templates,
+                        prompt_file: captionForm.prompt_file.value.trim(),
+                        templates_file: captionForm.templates_file.value.trim(),
+                    },
+                };
+
+                if (!payload.caption.prompt_file) {
+                    payload.caption.prompt_file = null;
+                }
+                if (!payload.caption.templates_file) {
+                    payload.caption.templates_file = null;
+                }
+
+                try {
+                    const resp = await fetch('/settings/ai', {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(payload),
+                    });
+                    if (!resp.ok) {
+                        const error = await resp.json().catch(() => ({}));
+                        throw new Error(error.detail || resp.statusText);
+                    }
+                    const data = await resp.json();
+                    fillCaptionForm(data);
+                    showToast('文案配置已保存');
+                } catch (error) {
+                    showToast('保存失败：' + error, 'error');
                 }
             });
 
@@ -457,6 +776,8 @@ def create_app(config_path: Path | None = None) -> FastAPI:
                     historyList.innerHTML = `<li>读取失败：${error}</li>`;
                 }
             });
+
+            syncForms(false).catch(() => {});
             </script>
         </body>
         </html>

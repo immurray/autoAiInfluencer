@@ -67,6 +67,23 @@
 
 > 如果你已经拥有老版本的 Token，但 X 平台提示“缺少回调地址”或无法生成新 Token，多半是因为 App 尚未完成上述字段配置，按步骤填好并保存即可解决。
 
+#### 常见错误：403 Forbidden 如何处理？
+
+若在实际发布时看到日志中出现 `403 Forbidden`，通常是因为：
+
+- 应用的 **User authentication settings** 未开启 `Read and write` 权限，仅具备只读能力；
+- 访问令牌仍使用旧的只读版本，需要在 Developer Portal 中重新生成；
+- 新版 X API 需要在 “User authentication settings → Type of App” 中选择 `Web App` 或 `Native App`，若保持 `None` 将无法写入内容；
+- 媒体权限未启用，导致图片上传接口被拒绝。
+
+排查步骤：
+
+1. 打开目标 App 的 “User authentication settings”，确认权限勾选了 `Read`、`Write`（如需上传媒体建议同时勾选 `Direct Message`）。
+2. 点击页面底部的 **Save**，随后在 “Keys and tokens” 页面重新生成 `Access Token` 与 `Access Token Secret`，并更新到 `.env`。
+3. 若依旧失败，可检查日志中输出的详细错误代码，根据提示在 X 的 [错误码文档](https://developer.twitter.com/en/support/twitter-api/error-troubleshooting) 搜索对应解决方案。
+
+完成以上操作后，重新启动本项目即可继续发布。
+
 2. **配置 `config.json`**：
 
 `config.json` 控制运行参数，可根据需要调整。主要字段说明如下：

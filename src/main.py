@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict
 import asyncio
@@ -63,7 +64,18 @@ def create_app(config_path: Path | None = None) -> FastAPI:
 
     context = AppContext(config_file)
 
-    app = FastAPI(title="AI 虚拟人自动运营平台", version="0.2.0")
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        """统一处理应用的启动与停止逻辑，避免重复代码。"""
+
+        logging.getLogger(__name__).info("FastAPI 服务启动，配置文件：%s", context.config_path)
+        await context.scheduler.start()
+        try:
+            yield
+        finally:
+            await context.scheduler.shutdown()
+
+    app = FastAPI(title="AI 虚拟人自动运营平台", version="0.2.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -249,15 +261,6 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         </body>
         </html>
         """
-
-    @app.on_event("startup")
-    async def _startup() -> None:
-        logging.getLogger(__name__).info("FastAPI 服务启动，配置文件：%s", context.config_path)
-        await context.scheduler.start()
-
-    @app.on_event("shutdown")
-    async def _shutdown() -> None:
-        await context.scheduler.shutdown()
 
     def get_context() -> AppContext:
         return app.state.context  # type: ignore[attr-defined]

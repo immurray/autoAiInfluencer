@@ -11,7 +11,7 @@ import logging
 
 from dotenv import load_dotenv
 
-from auto_ai_influencer.config import AppConfig, load_config
+from auto_ai_influencer.config import AppConfig, build_app_config
 
 
 _PLACEHOLDER_VALUES = {
@@ -60,13 +60,35 @@ def _resolve_path(base: Path, value: Optional[str], fallback: str) -> Path:
     return (raw if raw.is_absolute() else (base / raw)).resolve()
 
 
+def _override_path_for(config_path: Path) -> Path:
+    """根据主配置文件路径推导出本地覆盖文件路径。"""
+
+    suffix = config_path.suffix or ".json"
+    return config_path.with_name(f"{config_path.stem}.local{suffix}")
+
+
+def _merge_dict(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+    """递归合并配置字典，覆盖同名键。"""
+
+    result = dict(base)
+    for key, value in override.items():
+        if (
+            isinstance(value, dict)
+            and isinstance(result.get(key), dict)
+        ):
+            result[key] = _merge_dict(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
 def _load_raw_config(path: Path) -> Dict[str, Any]:
     with path.open("r", encoding="utf-8") as fp:
         return json.load(fp)
 
 
-def load_settings(config_path: Path) -> tuple[AppConfig, AIPipelineConfig, Dict[str, Any]]:
-    """加载基础配置与 AI 流水线配置。"""
+def load_settings(config_path: Path) -> tuple[AppConfig, AIPipelineConfig, Dict[str, Any], Path]:
+    """加载基础配置与 AI 流水线配置，并支持本地覆盖。"""
 
     # 加载通用 .env 与配置文件同目录下的 .env
     load_dotenv()
@@ -74,8 +96,20 @@ def load_settings(config_path: Path) -> tuple[AppConfig, AIPipelineConfig, Dict[
     if env_path.exists():
         load_dotenv(dotenv_path=env_path, override=False)
 
-    app_config = load_config(config_path)
-    raw_data = _load_raw_config(config_path)
+    base_data = _load_raw_config(config_path)
+    override_path = _override_path_for(config_path)
+    if override_path.exists():
+        try:
+            override_data = _load_raw_config(override_path)
+            raw_data = _merge_dict(base_data, override_data)
+            logger.info("已加载本地覆盖配置：%s", override_path)
+        except json.JSONDecodeError as exc:
+            logger.warning("本地覆盖配置解析失败，已忽略：%s", exc)
+            raw_data = base_data
+    else:
+        raw_data = base_data
+
+    app_config = build_app_config(raw_data, base_dir=config_path.parent)
 
     ai_data: Dict[str, Any] = raw_data.get("ai_pipeline", {})
     base_dir = config_path.parent
@@ -144,7 +178,7 @@ def load_settings(config_path: Path) -> tuple[AppConfig, AIPipelineConfig, Dict[
     ready_directory.mkdir(parents=True, exist_ok=True)
     caption_log_directory.mkdir(parents=True, exist_ok=True)
 
-    return app_config, ai_config, raw_data
+    return app_config, ai_config, raw_data, override_path
 
 
 __all__ = ["AIPipelineConfig", "load_settings"]

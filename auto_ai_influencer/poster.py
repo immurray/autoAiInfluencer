@@ -81,8 +81,8 @@ class TweetPoster:
                 media = self._client_v1.media_upload(
                     filename=str(upload_path),
                     file=file_obj,
-                    media_type=media_type,
                 )
+            self._logger.debug("媒体类型检测结果：%s，将按照 Tweepy 默认推断上传。", media_type)
             response = self._client_v2.create_tweet(text=text, media_ids=[media.media_id])
         except tweepy.errors.Forbidden as exc:
             detail = self._extract_twitter_error_detail(exc)

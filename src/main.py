@@ -622,7 +622,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
                         '<': '&lt;',
                         '>': '&gt;',
                         '"': '&quot;',
-                        "'": '&#39;',
+                        "'": '&#39;'
                     };
                     return String(value).replace(/[&<>"']/g, function (ch) {
                         return map[ch] || ch;
@@ -785,8 +785,8 @@ def create_app(config_path: Path | None = None) -> FastAPI:
                             replicate_token: aiForm.replicate_token.value,
                             leonardo_model: aiForm.leonardo_model.value.trim() || null,
                             leonardo_token: aiForm.leonardo_token.value,
-                            timezone: aiForm.timezone.value.trim() || null,
-                        },
+                            timezone: aiForm.timezone.value.trim() || null
+                        }
                     };
 
                     Object.keys(payload.ai_pipeline).forEach(function (key) {
@@ -798,9 +798,9 @@ def create_app(config_path: Path | None = None) -> FastAPI:
                     fetch('/settings/ai', {
                         method: 'PUT',
                         headers: {
-                            'Content-Type': 'application/json',
+                            'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify(payload),
+                        body: JSON.stringify(payload)
                     })
                         .then(function (resp) {
                             if (!resp.ok) {
@@ -837,7 +837,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
                         prompt: promptField.value,
                         templates: templates,
                         prompt_file: captionForm.prompt_file.value.trim(),
-                        templates_file: captionForm.templates_file.value.trim(),
+                        templates_file: captionForm.templates_file.value.trim()
                     };
 
                     if (captionPayload.prompt_file) {
@@ -872,9 +872,9 @@ def create_app(config_path: Path | None = None) -> FastAPI:
                     fetch('/settings/ai', {
                         method: 'PUT',
                         headers: {
-                            'Content-Type': 'application/json',
+                            'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify(payload),
+                        body: JSON.stringify(payload)
                     })
                         .then(function (resp) {
                             if (!resp.ok) {

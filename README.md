@@ -54,7 +54,7 @@
 | `REPLICATE_API_TOKEN` | 用于调用 Replicate 图片生成服务的 Token，可在 [Replicate 个人设置页](https://replicate.com/account/api-tokens) 创建。 |
 | `LEONARDO_API_TOKEN` | Leonardo.ai 生成服务的 Token，仅在启用 `image_source: leonardo` 时需要。 |
 
-> 提示：若暂时不打算真实发文，可留空推特凭证并保持 `config.json` 中的 `"dry_run": true`。
+> 提示：若暂时不打算真实发文，可留空推特凭证并将 `config.json` 中的 `"dry_run"` 改为 `true`。
 
 ### X（Twitter） 回调地址与域名配置指引
 
@@ -95,7 +95,7 @@
    | `image_directory` | `./images` | 待发布图片所在目录，系统会按文件名排序并跳过已发布文件。 |
    | `database_path` | `./data/auto_ai.db` | SQLite 数据库存储路径。 |
    | `log_path` | `./data/bot.log` | 日志输出文件。 |
-   | `dry_run` | `true` | 是否仅模拟发布（不调用 X API）。 |
+| `dry_run` | `false` | 是否仅模拟发布（不调用 X API）。 |
    | `max_posts_per_cycle` | `1` | 每轮调度最多发出的帖子数量。 |
    | `caption.model` | `gpt-4o-mini` | 使用的 OpenAI 模型名称，可改为已开通的模型。 |
    | `caption.prompt` / `caption.templates` | 见文件 | 文案生成提示词与后备模板，模板中可使用 `{filename}` 占位符。 |

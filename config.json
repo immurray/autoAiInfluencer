@@ -2,7 +2,7 @@
   "image_directory": "./images",
   "database_path": "./data/auto_ai.db",
   "log_path": "./data/bot.log",
-  "dry_run": true,
+  "dry_run": false,
   "max_posts_per_cycle": 1,
   "caption": {
     "model": "gpt-4o-mini",

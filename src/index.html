@@ -190,10 +190,6 @@
                     <span>文案风格标识</span>
                     <input type="text" name="caption_style" placeholder="soft_romance" />
                 </label>
-                <label>
-                    <span>OpenAI API Key（会写入覆盖文件）</span>
-                    <input type="password" name="openai_api_key" autocomplete="new-password" />
-                </label>
                 <details>
                     <summary>高级参数（可选）</summary>
                     <label>
@@ -205,16 +201,8 @@
                         <input type="text" name="replicate_model_version" />
                     </label>
                     <label>
-                        <span>Replicate Token</span>
-                        <input type="password" name="replicate_token" autocomplete="new-password" />
-                    </label>
-                    <label>
                         <span>Leonardo 模型</span>
                         <input type="text" name="leonardo_model" />
-                    </label>
-                    <label>
-                        <span>Leonardo Token</span>
-                        <input type="password" name="leonardo_token" autocomplete="new-password" />
                     </label>
                     <label>
                         <span>流水线时区（例如 Asia/Shanghai）</span>
@@ -257,15 +245,6 @@
     </section>
 
     <section>
-        <h2>文案提示词预览</h2>
-        <p>点击下方按钮即可查看当前的提示词与模板，便于在更新配置前了解现状。</p>
-        <button id="load-caption-config">重新加载文案配置</button>
-        <div id="caption-config">
-            <p>尚未加载配置。</p>
-        </div>
-    </section>
-
-    <section>
         <h2>最近发文记录</h2>
         <ul id="history-list"><li>点击“查看最近发文记录”获取最新数据。</li></ul>
     </section>
@@ -281,7 +260,6 @@
     (function () {
         var healthOutput = document.querySelector('#health');
         var historyList = document.querySelector('#history-list');
-        var captionConfig = document.querySelector('#caption-config');
         var aiForm = document.querySelector('#ai-form');
         var captionForm = document.querySelector('#caption-form');
         var loadSettingsButton = document.querySelector('#load-settings-form');
@@ -341,12 +319,9 @@
             aiForm.image_source.value = ai.image_source || '';
             aiForm.prompt_template.value = ai.prompt_template || '';
             aiForm.caption_style.value = ai.caption_style || '';
-            aiForm.openai_api_key.value = ai.openai_api_key || '';
             aiForm.replicate_model.value = ai.replicate_model || '';
             aiForm.replicate_model_version.value = ai.replicate_model_version || '';
-            aiForm.replicate_token.value = ai.replicate_token || '';
             aiForm.leonardo_model.value = ai.leonardo_model || '';
-            aiForm.leonardo_token.value = ai.leonardo_token || '';
             aiForm.timezone.value = ai.timezone || '';
         }
 
@@ -413,34 +388,6 @@
             syncForms();
         });
 
-        document.querySelector('#load-caption-config').addEventListener('click', function () {
-            captionConfig.innerHTML = '<p>正在读取配置...</p>';
-            syncForms(false)
-                .then(function (data) {
-                    var caption = data.caption || {};
-                    var templates = Array.isArray(caption.templates) ? caption.templates : [];
-
-                    var templateList;
-                    if (templates.length > 0) {
-                        templateList = '<ol>' + templates.map(function (item) {
-                            return '<li>' + escapeHtml(item) + '</li>';
-                        }).join('') + '</ol>';
-                    } else {
-                        templateList = '<p>当前未设置模板。</p>';
-                    }
-
-                    captionConfig.innerHTML =
-                        '<p><strong>模型：</strong> ' + escapeHtml(caption.model || '未配置') + '</p>' +
-                        '<p><strong>提示词：</strong></p>' +
-                        '<pre>' + escapeHtml(caption.prompt || '未配置提示词') + '</pre>' +
-                        '<p><strong>模板列表：</strong></p>' +
-                        templateList;
-                })
-                .catch(function (error) {
-                    captionConfig.innerHTML = '<p>读取失败：' + error + '</p>';
-                });
-        });
-
         aiForm.addEventListener('submit', function (event) {
             event.preventDefault();
             var slots = aiForm.post_slots.value
@@ -456,12 +403,9 @@
                     image_source: aiForm.image_source.value.trim() || null,
                     prompt_template: aiForm.prompt_template.value,
                     caption_style: aiForm.caption_style.value.trim() || null,
-                    openai_api_key: aiForm.openai_api_key.value,
                     replicate_model: aiForm.replicate_model.value.trim() || null,
                     replicate_model_version: aiForm.replicate_model_version.value.trim() || null,
-                    replicate_token: aiForm.replicate_token.value,
                     leonardo_model: aiForm.leonardo_model.value.trim() || null,
-                    leonardo_token: aiForm.leonardo_token.value,
                     timezone: aiForm.timezone.value.trim() || null
                 }
             };

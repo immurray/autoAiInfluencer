@@ -24,6 +24,7 @@ from .database import Database
 from .pipeline.caption_provider import CaptionProvider
 from .pipeline.image_provider import ImageProvider
 from .scheduler import PipelineScheduler
+from . import __version__
 
 _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 _INDEX_HTML_PATH = Path(__file__).with_name("index.html")
@@ -322,7 +323,7 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         finally:
             await context.scheduler.shutdown()
 
-    app = FastAPI(title="AI 虚拟人自动运营平台", version="0.2.0", lifespan=lifespan)
+    app = FastAPI(title="AI 虚拟人自动运营平台", version=__version__, lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],

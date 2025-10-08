@@ -129,6 +129,12 @@ python -m src.main
 - `/images/generate` 会调用配置的云端服务生成一张新图片并写入 `data/ready_to_post/`，便于提前备稿。
 - 默认监听地址为 `0.0.0.0:5500`，可通过 `APP_HOST`、`APP_PORT`、`APP_RELOAD` 环境变量覆盖。
 
+#### 运营辅助接口
+
+- `GET /assistant/ready-images`：快速盘点 `ready_to_post` 目录的图片素材，输出文件大小、最近修改时间以及是否已经被使用，方便安排排期。
+- `GET /assistant/schedule`：返回调度器的启用状态、时区与下一次触发时间，便于确认自动发帖是否正常运行。
+- `POST /assistant/preview-caption`：指定图片文件名（或留空使用默认测试图）即可实时生成一条文案草稿，支持临时覆盖风格与提示词，用于在发布前校对内容。
+
 若仍需使用原有命令行入口，可继续执行：
 
 ```bash
@@ -232,6 +238,47 @@ python -m auto_ai_influencer.main
    - 例：使用 Docker 时，在 `Dockerfile` 中设置 `CMD ["python", "-m", "src.main"]`。
 
 通过以上配置，即可实现“定时自动发送 + 人工干预内容 + 全自动运行”的完整闭环。
+
+## 进阶运营策略：监控竞品、打磨提示词与衡量效果
+
+为了让账号长期稳定增长，建议在自动化发布之外，补充以下三类人工运营动作：
+
+### 1. 如何系统化监控竞品？
+
+- **整理竞品清单**：先在 `config.json` 中新增自定义字段或维护独立的 `data/competitors.txt`，记录需要重点关注的账号用户名（无需 `@`）。
+- **借助 Tweepy 抓取数据**：使用 `.env` 中的 `TWITTER_BEARER_TOKEN` 初始化 `tweepy.Client`，每日批量请求 `client.get_users_tweets()`，即可拉取竞品最新内容与互动量。你可以参考下方伪代码快速落地：
+
+  ```python
+  import os
+  import tweepy
+
+  client = tweepy.Client(bearer_token=os.environ["TWITTER_BEARER_TOKEN"])
+  for handle in open("data/competitors.txt", "r", encoding="utf-8"):
+      user = client.get_user(username=handle.strip()).data
+      tweets = client.get_users_tweets(user.id, max_results=5,
+                                       tweet_fields=["public_metrics","created_at"])
+      # 将 tweets.data 写入 SQLite 或导出为 CSV，便于后续分析
+  ```
+
+- **落地到数据库**：可以复用 `auto_ai_influencer/storage.py` 中的数据库封装，新增 `competitor_posts` 表，存储发布时间、文本、互动指标等字段。随后在 BI 工具（如 Metabase、Superset）中创建视图，观察竞品的发文频率与爆款主题。
+- **结合调度器实现自动化**：把以上脚本放入 `scripts/` 目录，并通过 `cron` 或 APScheduler `BackgroundScheduler` 定时运行，与本项目的发帖流程使用同一套凭证即可。
+
+### 2. 如何写出更高质量的提示词？
+
+- **拆解提示词结构**：建议按照「角色设定 → 场景背景 → 目标受众 → 风格限制 → 行动号召」的顺序编写，例如：
+
+  > 你是一位懂得都市生活方式的虚拟潮流博主，请围绕 `{filename}` 这张图片……
+
+- **多维度提供素材**：在 `caption.prompt` 中加入关键词、情绪、希望强调的产品卖点等信息，必要时使用列表或编号提示模型输出结构化文案。
+- **善用模板文件**：若同一账号有多种风格，可将不同风格的提示词拆到 `prompts/city_style.txt`、`prompts/cute_style.txt` 等文件，通过 `caption.prompt_file` 在运行时快速切换，避免频繁修改主配置。
+- **建立提示词迭代闭环**：将生成效果不佳的文案记录在 `data/caption_feedback/`，定期回看并标记失败原因（如“缺少行动号召”）。根据反馈调优提示词或补充新的模板，逐步形成适用于本账号的“提示词手册”。
+
+### 3. 如何持续监控投放效果？
+
+- **用好互动数据快照**：项目默认提供 `engagements` 表，你可以在发布后定时调用 `client.get_tweet()` 并写入 `Database.record_engagement()`，追踪点赞、转发、回复的变化趋势。
+- **构建指标面板**：将 `post_history` 与 `engagements` 关联后，计算 CTR（互动 / 展示）、不同素材类型的平均互动等指标，借助 Excel、Notion 或数据可视化工具生成周报。
+- **设置预警阈值**：例如当连续三篇文案互动低于历史均值的 50% 时，通过企业微信/钉钉发送提醒，及时调整选题或素材。
+- **结合 A/B 测试**：利用 dry-run 模式提前生成多份文案，挑选 2～3 个版本实测；将表现最佳的提示词模式沉淀下来，为后续自动化流程提供输入。
 
 ## 注意事项
 

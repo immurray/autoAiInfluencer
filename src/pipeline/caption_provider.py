@@ -196,16 +196,29 @@ class CaptionProvider:
         elif config.openai_api_key:
             self._logger.warning("未安装 openai 库，无法使用云端文案。")
 
-    def get_caption(self, image_path: Path, style: Optional[str] = None) -> CaptionResult:
+    def get_caption(
+        self,
+        image_path: Path,
+        style: Optional[str] = None,
+        *,
+        log_result: bool = True,
+        prompt_override: Optional[str] = None,
+    ) -> CaptionResult:
         """获取文案，优先调用 OpenAI。"""
 
         style = style or self._config.caption_style
-        metadata: dict = {"style": style, "image": image_path.name}
+        prefix = (prompt_override or "").strip() or self._prompt_source.load()
+        metadata: dict = {
+            "style": style,
+            "image": image_path.name,
+            "prompt_override": bool(prompt_override and prompt_override.strip()),
+        }
 
         if self._client is not None:
             try:
-                caption = self._call_openai(image_path, style)
-                self._log_caption(image_path, caption, "openai", metadata)
+                caption = self._call_openai(image_path, style, prefix)
+                if log_result:
+                    self._log_caption(image_path, caption, "openai", metadata)
                 return CaptionResult(text=caption, provider="openai", metadata=metadata)
             except OpenAIAuthError as exc:  # pragma: no cover - 仅在真实调用时触发
                 self._handle_openai_auth_error("OpenAI SDK", exc)
@@ -214,8 +227,9 @@ class CaptionProvider:
 
         if self._http_fallback_enabled and self._config.openai_api_key:
             try:
-                caption = self._call_openai_http(image_path, style)
-                self._log_caption(image_path, caption, "openai_http", metadata)
+                caption = self._call_openai_http(image_path, style, prefix)
+                if log_result:
+                    self._log_caption(image_path, caption, "openai_http", metadata)
                 return CaptionResult(text=caption, provider="openai_http", metadata=metadata)
             except requests.exceptions.HTTPError as exc:
                 if exc.response is not None and exc.response.status_code == 401:
@@ -226,17 +240,17 @@ class CaptionProvider:
                 self._logger.exception("OpenAI HTTP 文案生成失败：%s", exc)
 
         caption = self._generate_from_template(image_path, style)
-        self._log_caption(image_path, caption, "template", metadata)
+        if log_result:
+            self._log_caption(image_path, caption, "template", metadata)
         return CaptionResult(text=caption, provider="template", metadata=metadata)
 
-    def _call_openai(self, image_path: Path, style: str) -> str:
+    def _call_openai(self, image_path: Path, style: str, prefix: str) -> str:
         assert self._client is not None
         prompt = (
             f"请为文件名为 {image_path.name} 的图片编写一段适合 X 平台的中文文案，"
             f"整体风格为 {style}，需要包含 2-3 个 emoji 与至少 2 个话题标签，"
             "总长度控制在 100 字以内。"
         )
-        prefix = self._prompt_source.load()
         if prefix:
             prompt = f"{prefix}\n\n{prompt}"
 
@@ -378,7 +392,7 @@ class CaptionProvider:
                     continue
         return {}
 
-    def _call_openai_http(self, image_path: Path, style: str) -> str:
+    def _call_openai_http(self, image_path: Path, style: str, prefix: str) -> str:
         """使用 HTTP 调用 OpenAI 接口的兜底逻辑。"""
 
         if not self._config.openai_api_key:
@@ -389,7 +403,6 @@ class CaptionProvider:
             f"整体风格为 {style}，需要包含 2-3 个 emoji 与至少 2 个话题标签，"
             "总长度控制在 100 字以内。"
         )
-        prefix = self._prompt_source.load()
         if prefix:
             prompt = f"{prefix}\n\n{prompt}"
 

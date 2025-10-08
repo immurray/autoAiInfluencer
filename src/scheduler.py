@@ -146,5 +146,28 @@ class PipelineScheduler:
     def _now_iso() -> str:
         return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
 
+    def get_overview(self) -> dict:
+        """生成调度器的运行概览，方便外部查询。"""
+
+        scheduler = self._scheduler
+        jobs: List[dict] = []
+        if scheduler and scheduler.running:
+            for job in scheduler.get_jobs():
+                jobs.append(
+                    {
+                        "id": job.id,
+                        "next_run_time": job.next_run_time.isoformat() if job.next_run_time else None,
+                        "trigger": str(job.trigger),
+                    }
+                )
+
+        return {
+            "enable": self._config.enable,
+            "timezone": self._config.timezone,
+            "post_slots": self._config.post_slots,
+            "running": bool(scheduler and scheduler.running),
+            "jobs": jobs,
+        }
+
 
 __all__ = ["PipelineScheduler"]

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import asyncio
@@ -196,6 +197,35 @@ class AppContext:
             },
         }
 
+    def list_ready_images(self) -> List[Dict[str, Any]]:
+        """枚举待发布目录下的素材，标记是否已用过。"""
+
+        directory = self.ai_config.ready_directory
+        directory.mkdir(parents=True, exist_ok=True)
+        posted = set(self.database.get_posted_images())
+        items: List[Dict[str, Any]] = []
+        for path in sorted(directory.iterdir()):
+            if not path.is_file():
+                continue
+            if path.suffix.lower() not in _IMAGE_EXTENSIONS:
+                continue
+            stat = path.stat()
+            items.append(
+                {
+                    "filename": path.name,
+                    "path": str(path),
+                    "used": path.name in posted,
+                    "size": stat.st_size,
+                    "modified_at": datetime.fromtimestamp(stat.st_mtime).astimezone().isoformat(),
+                }
+            )
+        return items
+
+    def get_scheduler_overview(self) -> Dict[str, Any]:
+        """返回调度器当前状态，用于辅助运营判断。"""
+
+        return self.scheduler.get_overview()
+
     async def apply_settings_update(
         self,
         *,
@@ -305,6 +335,20 @@ class SettingsUpdate(BaseModel):
     caption: Optional[CaptionUpdate] = None
 
 
+class CaptionPreviewRequest(BaseModel):
+    """临时生成文案的请求体。"""
+
+    image_name: Optional[str] = Field(
+        None,
+        description="待预览的图片文件名，留空则使用默认测试图",
+    )
+    style: Optional[str] = Field(None, description="临时覆盖的文案风格")
+    prompt_override: Optional[str] = Field(
+        None,
+        description="额外的提示词前缀，不会写回配置",
+    )
+
+
 def create_app(config_path: Path | None = None) -> FastAPI:
     config_file = config_path or Path(os.getenv("AI_PIPELINE_CONFIG", "config.json")).resolve()
     if not config_file.exists():
@@ -392,6 +436,19 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         records = ctx.database.fetch_caption_logs(limit=limit)
         return {"items": records, "count": len(records)}
 
+    @app.get("/assistant/ready-images")
+    async def ready_images(ctx: AppContext = Depends(get_context)) -> Dict[str, Any]:
+        """列出待发布目录，便于盘点素材储备。"""
+
+        items = ctx.list_ready_images()
+        return {"items": items, "count": len(items)}
+
+    @app.get("/assistant/schedule")
+    async def schedule_overview(ctx: AppContext = Depends(get_context)) -> Dict[str, Any]:
+        """返回调度器状态，提示下一次运行时间。"""
+
+        return ctx.get_scheduler_overview()
+
     @app.post("/pipeline/run")
     async def pipeline_run(ctx: AppContext = Depends(get_context)) -> Dict[str, Any]:
         asyncio.create_task(ctx.scheduler.run_once())
@@ -440,6 +497,40 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         if not success:
             payload["note"] = "请检查配置中的云端服务是否可用。"
         return payload
+
+    @app.post("/assistant/preview-caption")
+    async def preview_caption(
+        payload: CaptionPreviewRequest,
+        ctx: AppContext = Depends(get_context),
+    ) -> Dict[str, Any]:
+        """实时生成一条文案草稿，帮助运营提前审稿。"""
+
+        if payload.image_name:
+            target = ctx.ai_config.ready_directory / payload.image_name
+        else:
+            target = ctx.ai_config.default_image
+
+        if not target.exists():
+            raise HTTPException(status_code=404, detail="未找到指定图片，请确认文件是否存在。")
+
+        style = payload.style or ctx.ai_config.caption_style
+        result = await asyncio.to_thread(
+            ctx.caption_provider.get_caption,
+            target,
+            style,
+            log_result=False,
+            prompt_override=payload.prompt_override,
+        )
+
+        response: Dict[str, Any] = {
+            "caption": result.text,
+            "provider": result.provider,
+            "style": style,
+            "image": target.name,
+        }
+        if result.metadata:
+            response["metadata"] = result.metadata
+        return response
 
     return app
 

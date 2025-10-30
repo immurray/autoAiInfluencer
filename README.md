@@ -50,6 +50,7 @@
    | 环境变量 | 说明 |
    | --- | --- |
 | `TWITTER_API_KEY`、`TWITTER_API_SECRET`、`TWITTER_ACCESS_TOKEN`、`TWITTER_ACCESS_TOKEN_SECRET`、`TWITTER_BEARER_TOKEN` | 在 [X Developer Portal](https://developer.twitter.com/) 申请的 API 凭证，缺失时仅能 dry-run。 |
+| `XHS_MCP_BASE_URL`、`XHS_MCP_CLIENT_ID`、`XHS_MCP_CLIENT_SECRET`、`XHS_MCP_CHANNEL_ID` | 小红书 MCP 服务端提供的调用地址与凭证，若缺失将自动降级为 dry-run。 |
 | `OPENAI_API_KEY` | 用于文案生成的 OpenAI API 密钥，留空则使用本地模板。 |
 | `REPLICATE_API_TOKEN` | 用于调用 Replicate 图片生成服务的 Token，可在 [Replicate 个人设置页](https://replicate.com/account/api-tokens) 创建。 |
 | `LEONARDO_API_TOKEN` | Leonardo.ai 生成服务的 Token，仅在启用 `image_source: leonardo` 时需要。 |
@@ -99,11 +100,22 @@
    | `max_posts_per_cycle` | `1` | 每轮调度最多发出的帖子数量。 |
    | `caption.model` | `gpt-4o-mini` | 使用的 OpenAI 模型名称，可改为已开通的模型。 |
    | `caption.prompt` / `caption.templates` | 见文件 | 文案生成提示词与后备模板，模板中可使用 `{filename}` 占位符。 |
-   | `tweet.prefix` / `tweet.suffix` | `""` / `"#AI #虚拟人"` | 文案前缀/后缀，会在最终发布时拼接。 |
-   | `tweet.max_length` | `280` | X 帖子最大长度。 |
+| `tweet.prefix` / `tweet.suffix` | `""` / `"#AI #虚拟人"` | 文案前缀/后缀，会在最终发布时拼接。 |
+| `tweet.max_length` | `280` | X 帖子最大长度。 |
+| `xiaohongshu.enable` | `true` | 是否启用小红书渠道，设为 `false` 时仅保留 X 推送。 |
+| `xiaohongshu.prefix` / `xiaohongshu.suffix` | `""` / `"#AI #灵感分享"` | 小红书笔记正文的前后缀，可按需增加标签或引导语。 |
+| `xiaohongshu.max_length` | `2000` | 小红书笔记正文允许的最大长度，超过时会自动截断并追加省略号。 |
+| `xiaohongshu.title_template` / `xiaohongshu.title_max_length` | `"AI 灵感：{summary}"` / `20` | 标题模板与最大长度，模板支持 `{summary}`（首行摘要）和 `{text}` 占位符。 |
+| `xiaohongshu.note_type` / `xiaohongshu.visibility` | `"GRAPHIC"` / `"PUBLIC"` | MCP 发布接口要求的笔记类型与可见性参数。 |
    | `scheduler.interval_minutes` | `60` | 调度间隔（分钟）。 |
    | `scheduler.timezone` | `Asia/Shanghai` | 调度器使用的时区。 |
    | `scheduler.initial_run` | `true` | 启动后是否立即执行一次。 |
+
+   **小红书对接要点：**
+
+   - `xiaohongshu` 节点用于配置 MCP 服务的接口地址、凭证与文案样式，`enable` 为 `false` 时将跳过小红书推送。
+   - MCP 服务需先提供 client_id / client_secret 等凭证，并允许调用 `/oauth/token` 与 `/mcp/note/publish` 接口，仓库默认会向这两个路径发送请求，可在配置中自定义。
+   - 文案正文会按照 `prefix + caption + suffix` 的顺序使用换行拼接，并在超长时自动截断；标题由 `title_template` 格式化生成，模板内可使用 `{summary}`（正文首行）和 `{text}`（完整正文）。
 
 3. **准备素材与数据目录**：
 

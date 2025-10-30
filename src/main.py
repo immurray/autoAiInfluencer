@@ -18,7 +18,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from auto_ai_influencer.logging_config import setup_logging
-from auto_ai_influencer.poster import TweetPoster
+from auto_ai_influencer.poster import PosterProtocol, TweetPoster, XiaohongshuPoster
 
 from .config import load_settings
 from .database import Database
@@ -150,12 +150,16 @@ class AppContext:
             raw_config,
             self._config_path.parent,
         )
-        self.poster = TweetPoster(app_config.twitter, app_config.dry_run)
+        posters: list[PosterProtocol] = [TweetPoster(app_config.twitter, app_config.dry_run)]
+        if app_config.xiaohongshu.enable:
+            posters.append(XiaohongshuPoster(app_config.xiaohongshu, app_config.dry_run))
+        self.poster = posters[0]
+        self.posters = posters
         self.scheduler = PipelineScheduler(
             config=ai_config,
             image_provider=self.image_provider,
             caption_provider=self.caption_provider,
-            poster=self.poster,
+            posters=posters,
             database=self.database,
         )
 
@@ -391,7 +395,10 @@ def create_app(config_path: Path | None = None) -> FastAPI:
         ctx = get_context()
         return {
             "status": "ok",
-            "dry_run": ctx.poster.dry_run,
+            "channels": [
+                {"platform": poster.platform, "dry_run": poster.dry_run}
+                for poster in ctx.posters
+            ],
             "ai_pipeline": {
                 "enable": ctx.ai_config.enable,
                 "post_slots": ctx.ai_config.post_slots,

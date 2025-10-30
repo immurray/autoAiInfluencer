@@ -20,6 +20,18 @@
     "suffix": "#AI #虚拟人",
     "max_length": 280
   },
+  "xiaohongshu": {
+    "enable": true,
+    "prefix": "",
+    "suffix": "#AI #灵感分享",
+    "max_length": 2000,
+    "title_template": "AI 灵感：{summary}",
+    "title_max_length": 20,
+    "note_type": "GRAPHIC",
+    "visibility": "PUBLIC",
+    "token_endpoint": "/oauth/token",
+    "publish_endpoint": "/mcp/note/publish"
+  },
   "scheduler": {
     "interval_minutes": 60,
     "timezone": "Asia/Shanghai",

@@ -18,7 +18,8 @@ class PostRecord:
     image_path: Path
     caption: str
     posted_at: datetime
-    tweet_id: Optional[str]
+    platform: str
+    external_id: Optional[str]
     dry_run: bool
 
 
@@ -36,7 +37,7 @@ class Database:
         return sqlite3.connect(self._db_path)
 
     def _ensure_schema(self) -> None:
-        """确保表结构存在。"""
+        """确保表结构存在，并兼容旧版本数据。"""
 
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
@@ -49,6 +50,8 @@ class Database:
                     caption TEXT NOT NULL,
                     posted_at TEXT NOT NULL,
                     tweet_id TEXT,
+                    platform TEXT NOT NULL DEFAULT 'twitter',
+                    external_id TEXT,
                     dry_run INTEGER NOT NULL DEFAULT 0
                 );
 
@@ -75,17 +78,24 @@ class Database:
             )
             conn.commit()
 
+            self._ensure_new_columns(conn)
+
     def record_post(self, record: PostRecord) -> None:
         """写入一条发布记录。"""
 
         with self._connect() as conn:
             conn.execute(
-                "INSERT INTO posts(image_path, caption, posted_at, tweet_id, dry_run) VALUES (?, ?, ?, ?, ?)",
+                """
+                INSERT INTO posts(image_path, caption, posted_at, platform, external_id, tweet_id, dry_run)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
                 (
                     str(record.image_path),
                     record.caption,
                     record.posted_at.isoformat(),
-                    record.tweet_id,
+                    record.platform,
+                    record.external_id,
+                    record.external_id if record.platform == "twitter" else None,
                     1 if record.dry_run else 0,
                 ),
             )
@@ -128,17 +138,49 @@ class Database:
 
         with self._connect() as conn:
             cursor = conn.execute(
-                "SELECT image_path, caption, posted_at, tweet_id, dry_run FROM posts ORDER BY posted_at DESC LIMIT ?",
+                """
+                SELECT image_path, caption, posted_at, platform, external_id, tweet_id, dry_run
+                  FROM posts
+              ORDER BY posted_at DESC
+                 LIMIT ?
+                """,
                 (limit,),
             )
-            for image_path, caption, posted_at, tweet_id, dry_run in cursor.fetchall():
+            for image_path, caption, posted_at, platform, external_id, tweet_id, dry_run in cursor.fetchall():
+                final_id = external_id or tweet_id
                 yield PostRecord(
                     image_path=Path(image_path),
                     caption=caption,
                     posted_at=datetime.fromisoformat(posted_at),
-                    tweet_id=tweet_id,
+                    platform=platform or "twitter",
+                    external_id=final_id,
                     dry_run=bool(dry_run),
                 )
+
+    def _ensure_new_columns(self, conn: sqlite3.Connection) -> None:
+        """检查并补齐新增的列，兼容旧版本数据库。"""
+
+        cursor = conn.execute("PRAGMA table_info(posts)")
+        columns = {row[1] for row in cursor.fetchall()}
+
+        if "platform" not in columns:
+            conn.execute("ALTER TABLE posts ADD COLUMN platform TEXT NOT NULL DEFAULT 'twitter'")
+        if "external_id" not in columns:
+            conn.execute("ALTER TABLE posts ADD COLUMN external_id TEXT")
+        if "tweet_id" not in columns:
+            conn.execute("ALTER TABLE posts ADD COLUMN tweet_id TEXT")
+        conn.commit()
+
+        if "tweet_id" in columns:
+            conn.execute(
+                """
+                UPDATE posts
+                   SET external_id = COALESCE(external_id, tweet_id)
+                 WHERE tweet_id IS NOT NULL
+                   AND (external_id IS NULL OR external_id = '')
+                """
+            )
+            conn.commit()
 
 
 __all__ = ["Database", "PostRecord"]

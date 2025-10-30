@@ -85,6 +85,40 @@ class TwitterCredentials:
 
 
 @dataclass
+class XiaohongshuMcpConfig:
+    """小红书 MCP 平台相关配置。"""
+
+    enable: bool
+    base_url: Optional[str]
+    client_id: Optional[str]
+    client_secret: Optional[str]
+    channel_id: Optional[str]
+    token_endpoint: str
+    publish_endpoint: str
+    note_type: str
+    visibility: str
+    prefix: str
+    suffix: str
+    max_length: int
+    title_template: str
+    title_max_length: int
+    timeout: float
+
+    @property
+    def is_configured(self) -> bool:
+        """判断是否已提供完整的远程调用凭证。"""
+
+        return all(
+            [
+                self.base_url,
+                self.client_id,
+                self.client_secret,
+                self.channel_id,
+            ]
+        )
+
+
+@dataclass
 class AppConfig:
     """应用总配置。"""
 
@@ -96,6 +130,7 @@ class AppConfig:
     tweet: TweetConfig
     scheduler: SchedulerConfig
     twitter: TwitterCredentials
+    xiaohongshu: XiaohongshuMcpConfig
     openai_api_key: Optional[str]
     max_posts_per_cycle: int
 
@@ -148,6 +183,37 @@ def build_app_config(data: Dict[str, Any], *, base_dir: Path) -> AppConfig:
     dry_run = bool(data.get("dry_run", False))
     max_posts_per_cycle = int(data.get("max_posts_per_cycle", 1))
 
+    xhs_data: Dict[str, Any] = data.get("xiaohongshu", {})
+    xiaohongshu = XiaohongshuMcpConfig(
+        enable=bool(xhs_data.get("enable", True)),
+        base_url=(
+            os.getenv("XHS_MCP_BASE_URL")
+            or xhs_data.get("base_url")
+        ),
+        client_id=(
+            os.getenv("XHS_MCP_CLIENT_ID")
+            or xhs_data.get("client_id")
+        ),
+        client_secret=(
+            os.getenv("XHS_MCP_CLIENT_SECRET")
+            or xhs_data.get("client_secret")
+        ),
+        channel_id=(
+            os.getenv("XHS_MCP_CHANNEL_ID")
+            or xhs_data.get("channel_id")
+        ),
+        token_endpoint=xhs_data.get("token_endpoint", "/oauth/token"),
+        publish_endpoint=xhs_data.get("publish_endpoint", "/mcp/note/publish"),
+        note_type=xhs_data.get("note_type", "GRAPHIC"),
+        visibility=xhs_data.get("visibility", "PUBLIC"),
+        prefix=xhs_data.get("prefix", ""),
+        suffix=xhs_data.get("suffix", "#AI #灵感分享"),
+        max_length=int(xhs_data.get("max_length", 2000)),
+        title_template=xhs_data.get("title_template", "AI 灵感：{summary}"),
+        title_max_length=int(xhs_data.get("title_max_length", 20)),
+        timeout=float(xhs_data.get("timeout", 30.0)),
+    )
+
     twitter = TwitterCredentials(
         api_key=os.getenv("TWITTER_API_KEY"),
         api_key_secret=os.getenv("TWITTER_API_SECRET"),
@@ -174,6 +240,7 @@ def build_app_config(data: Dict[str, Any], *, base_dir: Path) -> AppConfig:
         tweet=tweet,
         scheduler=scheduler,
         twitter=twitter,
+        xiaohongshu=xiaohongshu,
         openai_api_key=openai_api_key,
         max_posts_per_cycle=max_posts_per_cycle,
     )
@@ -197,6 +264,7 @@ __all__ = [
     "TweetConfig",
     "SchedulerConfig",
     "TwitterCredentials",
+    "XiaohongshuMcpConfig",
     "load_config",
     "build_app_config",
     "mask_sensitive_value",

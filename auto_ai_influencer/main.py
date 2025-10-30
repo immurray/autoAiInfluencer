@@ -13,7 +13,7 @@ from .caption import CaptionGenerator
 from .config import AppConfig, load_config, mask_sensitive_value
 from .image_source import ImageSource
 from .logging_config import setup_logging
-from .poster import TweetPoster
+from .poster import TweetPoster, XiaohongshuPoster, PosterProtocol
 from .runner import BotRunner
 from .storage import Database
 
@@ -55,10 +55,12 @@ def create_components(config_path: Path) -> tuple[AppConfig, BotRunner]:
 
     image_source = ImageSource(config.image_directory)
     caption_generator = CaptionGenerator(config.caption, config.openai_api_key)
-    poster = TweetPoster(config.twitter, config.dry_run)
+    posters: list[PosterProtocol] = [TweetPoster(config.twitter, config.dry_run)]
+    if config.xiaohongshu.enable:
+        posters.append(XiaohongshuPoster(config.xiaohongshu, config.dry_run))
     database = Database(config.database_path)
 
-    runner = BotRunner(config, image_source, caption_generator, poster, database)
+    runner = BotRunner(config, image_source, caption_generator, posters, database)
     return config, runner
 
 

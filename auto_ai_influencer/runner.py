@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
+from typing import Sequence
 import logging
 
 from .caption import CaptionGenerator
 from .config import AppConfig
 from .image_source import ImageSource
-from .poster import TweetPoster
+from .poster import PosterProtocol, PostResult
 from .storage import Database, PostRecord
 
 
@@ -20,13 +22,13 @@ class BotRunner:
         config: AppConfig,
         image_source: ImageSource,
         caption_generator: CaptionGenerator,
-        poster: TweetPoster,
+        posters: Sequence[PosterProtocol],
         database: Database,
     ) -> None:
         self._config = config
         self._image_source = image_source
         self._caption_generator = caption_generator
-        self._poster = poster
+        self._posters: Sequence[PosterProtocol] = tuple(posters)
         self._database = database
         self._logger = logging.getLogger(__name__)
 
@@ -42,20 +44,26 @@ class BotRunner:
 
             try:
                 caption_result = self._caption_generator.generate(image_path)
-                tweet_text = self._assemble_tweet(caption_result.text)
-                result = self._poster.post(image_path, tweet_text)
-                record = PostRecord(
-                    image_path=image_path,
-                    caption=result.text,
-                    posted_at=datetime.utcnow(),
-                    tweet_id=result.tweet_id,
-                    dry_run=result.dry_run,
-                )
-                self._database.record_post(record)
+                results = self._post_to_all(image_path, caption_result.text)
+                if not results:
+                    self._logger.warning("本轮未找到可用的发布渠道，流程提前结束。")
+                    break
+
+                for result in results:
+                    record = PostRecord(
+                        image_path=image_path,
+                        caption=result.text,
+                        posted_at=datetime.utcnow(),
+                        platform=result.platform,
+                        external_id=result.post_id,
+                        dry_run=result.dry_run,
+                    )
+                    self._database.record_post(record)
+
                 used.add(image_path)
                 posted_count += 1
                 self._logger.info(
-                    "完成第 %d 条推文，dry-run=%s", posted_count, result.dry_run
+                    "完成第 %d 轮发布，涉及平台：%s", posted_count, ", ".join(r.platform for r in results)
                 )
             except Exception as exc:  # pylint: disable=broad-except
                 self._logger.exception("发布流程出错：%s", exc)
@@ -75,6 +83,45 @@ class BotRunner:
         truncated = text[: self._config.tweet.max_length - 1].rstrip()
         self._logger.warning("推文超长，将自动截断。原长 %d", len(text))
         return truncated + "…"
+
+    def _assemble_xiaohongshu(self, caption: str) -> str:
+        """拼装小红书笔记正文。"""
+
+        config = self._config.xiaohongshu
+        parts = [config.prefix.strip(), caption.strip(), config.suffix.strip()]
+        text = "\n".join([part for part in parts if part])
+        if config.max_length > 0 and len(text) > config.max_length:
+            truncated = text[: config.max_length - 1].rstrip()
+            self._logger.warning("小红书笔记超长，将自动截断。原长 %d", len(text))
+            return truncated + "…"
+        return text
+
+    def _post_to_all(self, image_path: Path, caption: str) -> list[PostResult]:
+        """依次向所有渠道发布内容。"""
+
+        if not self._posters:
+            return []
+
+        results: list[PostResult] = []
+        for poster in self._posters:
+            text = self._build_text_for_platform(poster.platform, caption)
+            try:
+                result = poster.post(image_path, text)
+            except Exception as exc:  # pylint: disable=broad-except
+                self._logger.exception("发布到 %s 失败：%s", poster.platform, exc)
+                self._database.record_error(f"post:{poster.platform}", str(exc), exc)
+                continue
+            results.append(result)
+        return results
+
+    def _build_text_for_platform(self, platform: str, caption: str) -> str:
+        """针对不同平台生成最终文案。"""
+
+        if platform == "twitter":
+            return self._assemble_tweet(caption)
+        if platform == "xiaohongshu":
+            return self._assemble_xiaohongshu(caption)
+        return caption.strip()
 
 
 __all__ = ["BotRunner"]

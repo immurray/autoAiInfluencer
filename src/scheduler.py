@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional
+from pathlib import Path
+from typing import List, Optional, Sequence
 import asyncio
 import logging
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from auto_ai_influencer.poster import TweetPoster
+from auto_ai_influencer.poster import PosterProtocol, PostResult
 
 from .config import AIPipelineConfig
 from .database import Database
@@ -32,13 +33,13 @@ class PipelineScheduler:
         config: AIPipelineConfig,
         image_provider: ImageProvider,
         caption_provider: CaptionProvider,
-        poster: TweetPoster,
+        posters: Sequence[PosterProtocol],
         database: Database,
     ) -> None:
         self._config = config
         self._image_provider = image_provider
         self._caption_provider = caption_provider
-        self._poster = poster
+        self._posters: Sequence[PosterProtocol] = tuple(posters)
         self._database = database
         self._logger = logging.getLogger(__name__)
         self._scheduler: Optional[AsyncIOScheduler] = None
@@ -97,15 +98,38 @@ class PipelineScheduler:
             return
 
         try:
-            post_result = await asyncio.to_thread(
-                self._poster.post,
+            results, errors = await asyncio.to_thread(
+                self._post_to_all,
                 image_result.path,
                 caption_result.text,
             )
+
+            if not results:
+                message = "; ".join(item["error"] for item in errors) if errors else "未找到可用渠道"
+                self._database.record_post(
+                    image_path=image_result.path,
+                    caption=caption_result.text,
+                    style=caption_result.metadata.get("style") if caption_result.metadata else None,
+                    post_time=self._now_iso(),
+                    result={"stage": "publish", "image_source": image_result.source, "errors": errors},
+                    dry_run=True,
+                    error=message,
+                )
+                self._logger.warning("流水线发布失败：%s", message)
+                return
+
+            dry_run_flag = all(result.dry_run for result in results)
             result_payload = {
-                "tweet_id": post_result.tweet_id,
+                "posts": [
+                    {
+                        "platform": result.platform,
+                        "post_id": result.post_id,
+                        "dry_run": result.dry_run,
+                    }
+                    for result in results
+                ],
+                "errors": errors,
                 "provider": caption_result.provider,
-                "dry_run": post_result.dry_run,
                 "image_source": image_result.source,
             }
             self._database.record_post(
@@ -114,12 +138,14 @@ class PipelineScheduler:
                 style=caption_result.metadata.get("style") if caption_result.metadata else None,
                 post_time=self._now_iso(),
                 result=result_payload,
-                dry_run=post_result.dry_run,
+                dry_run=dry_run_flag,
                 error=None,
             )
-            self._logger.info("流水线执行完成，dry-run=%s", post_result.dry_run)
+            self._logger.info(
+                "流水线执行完成，渠道：%s", ", ".join(result.platform for result in results)
+            )
         except Exception as exc:  # pylint: disable=broad-except
-            self._logger.exception("发布到 X 失败：%s", exc)
+            self._logger.exception("发布流程失败：%s", exc)
             self._database.record_post(
                 image_path=image_result.path,
                 caption=caption_result.text,
@@ -145,6 +171,24 @@ class PipelineScheduler:
     @staticmethod
     def _now_iso() -> str:
         return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+
+    def _post_to_all(self, image_path: Path, caption: str) -> tuple[list[PostResult], list[dict]]:
+        """同步向所有渠道发布内容，并返回成功结果与错误列表。"""
+
+        results: list[PostResult] = []
+        errors: list[dict] = []
+
+        for poster in self._posters:
+            try:
+                result = poster.post(image_path, caption)
+            except Exception as exc:  # pylint: disable=broad-except
+                error_text = str(exc)
+                errors.append({"platform": poster.platform, "error": error_text})
+                self._logger.exception("发布到 %s 失败：%s", poster.platform, exc)
+                continue
+            results.append(result)
+
+        return results, errors
 
     def get_overview(self) -> dict:
         """生成调度器的运行概览，方便外部查询。"""
